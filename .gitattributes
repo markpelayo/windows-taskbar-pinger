@@ -1,0 +1,22 @@
+# Normalise line endings so a checkout on Windows and one on macOS agree.
+* text=auto eol=lf
+
+# Windows-native files keep CRLF: cmd.exe is unreliable with LF-only batch
+# files, and rc.exe expects CRLF in resource scripts.
+*.bat   text eol=crlf
+*.cmd   text eol=crlf
+*.rc    text eol=crlf
+*.manifest text eol=crlf
+
+# Sources are UTF-8; the menus contain typographic characters and the build
+# passes /utf-8 to MSVC accordingly.
+*.cpp   text diff=cpp
+*.h     text diff=cpp
+
+*.md    text diff=markdown
+
+# Never touched by diff tooling.
+*.png   binary
+*.ico   binary
+*.exe   binary
+*.zip   binary
