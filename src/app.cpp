@@ -1,0 +1,566 @@
+// app.cpp — host window, layout, tray icon, message loop.
+
+#include "app.h"
+
+#include <objbase.h>
+#include <shellapi.h>
+
+#include <algorithm>
+#include <cstddef>
+#include <cstdio>
+#include <cwchar>
+
+namespace pinger {
+
+namespace {
+
+constexpr wchar_t kWindowClass[] = L"PingerTaskbarWidget";
+constexpr wchar_t kWindowTitle[] = L"Pinger";
+
+// Notification-area icon identity and its callback message.
+constexpr UINT kTrayIconId = 1;
+constexpr UINT WM_PINGER_TRAY = WM_APP + 2;
+constexpr UINT WM_PINGER_REMOVE = WM_APP + 3;
+
+// Colour key for the layered window. Any pixel painted exactly this colour is
+// transparent, which is how the taskbar shows through behind the grid.
+//
+// A near-black value rather than a garish magenta: text is antialiased against
+// whatever it is drawn over, and edge pixels that do not match the key exactly
+// stay opaque. Blending toward near-black is invisible on the default dark
+// taskbar and unobtrusive on a light one; magenta would fringe every glyph.
+constexpr COLORREF kChromaKey = RGB(1, 1, 1);
+
+// Gap between adjacent grids, in logical pixels.
+constexpr int kMonitorGap = 10;
+
+// Re-checks the taskbar's position and size. The shell does not notify us when
+// the taskbar moves or resizes, so this is a low-frequency poll; two seconds is
+// far below what anyone notices and costs one FindWindow plus one GetWindowRect.
+constexpr UINT kTaskbarPollTimerId = 1;
+constexpr UINT kTaskbarPollIntervalMs = 2000;
+
+}  // namespace
+
+// ------------------------------------------------------------------ lifetime
+
+App::App() = default;
+
+App::~App() {
+    RemoveTrayIcon();
+
+    // Controllers must die before the window they post results to.
+    monitors_.clear();
+    ClearSwatchCache();
+
+    if (window_) {
+        DestroyWindow(window_);
+        window_ = nullptr;
+    }
+}
+
+bool App::Initialise(HINSTANCE instance) {
+    instance_ = instance;
+
+    WNDCLASSEXW windowClass{};
+    windowClass.cbSize = sizeof(windowClass);
+    // Redraw the whole client area on resize; the grid is repositioned, not
+    // scrolled, so a partial redraw would leave stale cells behind.
+    windowClass.style = CS_HREDRAW | CS_VREDRAW | CS_DBLCLKS;
+    windowClass.lpfnWndProc = &App::WindowProc;
+    windowClass.hInstance = instance;
+    windowClass.hCursor = LoadCursorW(nullptr, IDC_ARROW);
+    // No background brush: everything is painted in WM_PAINT, and letting the
+    // system erase first would flash the taskbar's colour on every packet.
+    windowClass.hbrBackground = nullptr;
+    windowClass.lpszClassName = kWindowClass;
+
+    if (!RegisterClassExW(&windowClass)) {
+        if (GetLastError() != ERROR_CLASS_ALREADY_EXISTS) return false;
+    }
+
+    taskbarCreatedMessage_ = RegisterTaskbarCreatedMessage();
+
+    // Created as a popup first, then converted to a child if embedding works.
+    // WS_EX_LAYERED gives us the colour key that lets the taskbar show through;
+    // without it the widget would sit on an opaque rectangle, and GDI cannot
+    // reproduce the Windows 11 acrylic behind it.
+    window_ = CreateWindowExW(WS_EX_TOOLWINDOW | WS_EX_TOPMOST | WS_EX_LAYERED,
+                              kWindowClass, kWindowTitle, WS_POPUP, 0, 0, 100, 24,
+                              nullptr, nullptr, instance, this);
+
+    if (!window_) return false;
+
+    SetLayeredWindowAttributes(window_, kChromaKey, 0, LWA_COLORKEY);
+
+    taskbar_ = QueryTaskbar();
+    dpi_ = taskbar_.valid ? taskbar_.dpi : 96;
+    availableThickness_ = UsableThickness(taskbar_);
+
+    for (const MonitorRecord& record : store::LoadMonitors()) {
+        if (monitors_.size() >= static_cast<size_t>(defaults::kMaxMonitors)) break;
+        monitors_.push_back(std::make_unique<MonitorController>(
+            this, record, window_, static_cast<unsigned>(monitors_.size())));
+    }
+
+    // A settings file with no usable monitors would leave nothing on screen.
+    if (monitors_.empty()) {
+        MonitorRecord fresh;
+        fresh.id = L"default";
+        monitors_.push_back(std::make_unique<MonitorController>(this, fresh, window_, 0));
+        PersistMonitors();
+    }
+
+    AttachToTaskbar();
+    EnsureFont();
+    Relayout();
+
+    ShowWindow(window_, SW_SHOWNOACTIVATE);
+    AddTrayIcon();
+
+    SetTimer(window_, kTaskbarPollTimerId, kTaskbarPollIntervalMs, nullptr);
+    return true;
+}
+
+int App::Run() {
+    MSG message{};
+    while (GetMessageW(&message, nullptr, 0, 0) > 0) {
+        TranslateMessage(&message);
+        DispatchMessageW(&message);
+    }
+    return static_cast<int>(message.wParam);
+}
+
+void App::RequestQuit() { PostQuitMessage(0); }
+
+// -------------------------------------------------------------------- window
+
+LRESULT CALLBACK App::WindowProc(HWND window, UINT message, WPARAM wParam,
+                                 LPARAM lParam) {
+    App* app = nullptr;
+
+    if (message == WM_NCCREATE) {
+        auto* create = reinterpret_cast<CREATESTRUCTW*>(lParam);
+        app = static_cast<App*>(create->lpCreateParams);
+        SetWindowLongPtrW(window, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(app));
+        if (app) app->window_ = window;
+    } else {
+        app = reinterpret_cast<App*>(GetWindowLongPtrW(window, GWLP_USERDATA));
+    }
+
+    if (app) return app->HandleMessage(window, message, wParam, lParam);
+    return DefWindowProcW(window, message, wParam, lParam);
+}
+
+LRESULT App::HandleMessage(HWND window, UINT message, WPARAM wParam, LPARAM lParam) {
+    // The shell broadcasts this when Explorer restarts, which is exactly when an
+    // embedded widget has silently lost its parent.
+    if (taskbarCreatedMessage_ != 0 && message == taskbarCreatedMessage_) {
+        OnTaskbarCreated();
+        return 0;
+    }
+
+    switch (message) {
+        case WM_PAINT:
+            OnPaint();
+            return 0;
+
+        case WM_ERASEBKGND:
+            // Claimed so the system does not paint over the taskbar behind us,
+            // which would flicker once a second.
+            return 1;
+
+        case WM_PINGER_RESULT: {
+            auto* result = reinterpret_cast<PingResult*>(lParam);
+            OnResult(static_cast<unsigned>(wParam), result);
+            delete result;   // ownership was handed over by the worker thread
+            return 0;
+        }
+
+        case WM_PINGER_REMOVE:
+            RemoveMonitorAt(0);
+            return 0;
+
+        case WM_PINGER_TRAY:
+            if (LOWORD(lParam) == WM_RBUTTONUP || LOWORD(lParam) == WM_LBUTTONUP) {
+                POINT cursor{};
+                GetCursorPos(&cursor);
+                ShowTrayMenu(cursor);
+            }
+            return 0;
+
+        case WM_RBUTTONUP:
+        case WM_LBUTTONUP: {
+            POINT cursor{};
+            GetCursorPos(&cursor);
+            OnRightClick(cursor);
+            return 0;
+        }
+
+        case WM_TIMER:
+            if (wParam == kTaskbarPollTimerId) {
+                const TaskbarInfo current = QueryTaskbar();
+                const bool moved =
+                    current.valid &&
+                    (current.bounds.left != taskbar_.bounds.left ||
+                     current.bounds.top != taskbar_.bounds.top ||
+                     current.bounds.right != taskbar_.bounds.right ||
+                     current.bounds.bottom != taskbar_.bounds.bottom ||
+                     current.dpi != taskbar_.dpi || current.window != taskbar_.window);
+
+                if (moved) {
+                    taskbar_ = current;
+                    if (current.dpi != dpi_) {
+                        dpi_ = current.dpi;
+                        EnsureFont();
+                    }
+                    availableThickness_ = UsableThickness(taskbar_);
+                    Relayout();
+                }
+            }
+            return 0;
+
+        case WM_DPICHANGED:
+            OnDpiChanged();
+            return 0;
+
+        case WM_SETTINGCHANGE:
+            // Covers a theme switch, which changes the text colour we read from
+            // COLOR_BTNTEXT.
+            InvalidateRect(window, nullptr, FALSE);
+            return 0;
+
+        case WM_DESTROY:
+            KillTimer(window, kTaskbarPollTimerId);
+            PostQuitMessage(0);
+            return 0;
+
+        default:
+            break;
+    }
+
+    return DefWindowProcW(window, message, wParam, lParam);
+}
+
+// ------------------------------------------------------------------- drawing
+
+void App::OnPaint() {
+    PAINTSTRUCT paint{};
+    HDC dc = BeginPaint(window_, &paint);
+    if (!dc) return;
+
+    RECT client{};
+    GetClientRect(window_, &client);
+
+    // Double buffered: the taskbar is a busy background and painting cell by
+    // cell straight to the screen tears visibly.
+    ScopedMemoryDC memory(CreateCompatibleDC(dc));
+    ScopedBitmap buffer(
+        CreateCompatibleBitmap(dc, client.right - client.left, client.bottom - client.top));
+
+    if (memory && buffer) {
+        SelectGuard bufferGuard(memory.get(), buffer.get());
+
+        // Clear to the colour key, which the layered window turns transparent.
+        //
+        // This must be a real fill, not a blit from the window DC: nothing ever
+        // erases our background (hbrBackground is null and WM_ERASEBKGND is
+        // claimed), so that DC still holds the previous frame and the latency
+        // text would smear over itself — "1234 ms" shrinking to "12 ms" would
+        // leave the trailing glyphs behind.
+        ScopedBrush chroma(CreateSolidBrush(kChromaKey));
+        if (chroma) {
+            RECT full{0, 0, client.right - client.left, client.bottom - client.top};
+            FillRect(memory.get(), &full, chroma.get());
+        }
+
+        int x = client.left;
+        for (auto& monitor : monitors_) {
+            RECT slot = client;
+            slot.left = x;
+            slot.right = x + monitor->DesiredWidth();
+
+            monitor->Paint(memory.get(), slot, font_.get());
+
+            x = slot.right + MulDiv(kMonitorGap, dpi_, 96);
+        }
+
+        BitBlt(dc, 0, 0, client.right - client.left, client.bottom - client.top,
+               memory.get(), 0, 0, SRCCOPY);
+    }
+
+    EndPaint(window_, &paint);
+}
+
+void App::EnsureFont() {
+    if (font_ && fontDpi_ == dpi_) return;
+
+    // Match the taskbar clock: same family, same weight, so the readout looks
+    // like part of the shell rather than pasted on top of it.
+    LOGFONTW logical{};
+    logical.lfHeight = -MulDiv(9, dpi_, 72);
+    logical.lfWeight = FW_NORMAL;
+    logical.lfCharSet = DEFAULT_CHARSET;
+    logical.lfOutPrecision = OUT_TT_PRECIS;
+    logical.lfQuality = CLEARTYPE_QUALITY;
+    logical.lfPitchAndFamily = DEFAULT_PITCH | FF_DONTCARE;
+    wcscpy_s(logical.lfFaceName, L"Segoe UI");
+
+    font_.reset(CreateFontIndirectW(&logical));
+    fontDpi_ = dpi_;
+}
+
+// -------------------------------------------------------------------- layout
+
+void App::Relayout() {
+    EnsureFont();
+
+    int total = 0;
+    const int gap = MulDiv(kMonitorGap, dpi_, 96);
+
+    for (size_t i = 0; i < monitors_.size(); ++i) {
+        monitors_[i]->Layout(dpi_, availableThickness_);
+        if (i > 0) total += gap;
+        total += monitors_[i]->DesiredWidth();
+    }
+
+    total = std::max(total, 8);
+
+    PositionWidget(window_, taskbar_, hostMode_, offsetAlong_, total, availableThickness_);
+    InvalidateRect(window_, nullptr, FALSE);
+    UpdateTooltip();
+}
+
+void App::AttachToTaskbar() {
+    taskbar_ = QueryTaskbar();
+
+    if (!taskbar_.valid) {
+        hostMode_ = HostMode::Floating;
+        return;
+    }
+
+    dpi_ = taskbar_.dpi;
+    availableThickness_ = UsableThickness(taskbar_);
+
+    hostMode_ = EmbedInTaskbar(window_, taskbar_);
+
+    // Re-apply the colour key after re-parenting. WS_EX_LAYERED survives the
+    // style edits in EmbedInTaskbar, but the attributes attached to the layer
+    // are not documented to survive a top-level-to-child transition or a change
+    // of parent. Setting them again costs nothing and is the difference between
+    // a transparent widget and an opaque black rectangle on the taskbar.
+    //
+    // This also covers Explorer restarts, which come back through here.
+    SetLayeredWindowAttributes(window_, kChromaKey, 0, LWA_COLORKEY);
+
+    // Start a little in from the left edge, clear of the Start button and the
+    // pinned apps in the default Windows 11 layout. The user can move it.
+    if (offsetAlong_ == 0) {
+        offsetAlong_ = MulDiv(8, dpi_, 96);
+    }
+}
+
+void App::OnTaskbarCreated() {
+    // Explorer restarted: the old parent window is gone, the notification icon
+    // went with it, and both have to be re-established.
+    trayIconAdded_ = false;
+
+    AttachToTaskbar();
+    Relayout();
+    AddTrayIcon();
+
+    ShowWindow(window_, SW_SHOWNOACTIVATE);
+}
+
+void App::OnDpiChanged() {
+    const TaskbarInfo current = QueryTaskbar();
+    if (current.valid) {
+        taskbar_ = current;
+        dpi_ = current.dpi;
+        availableThickness_ = UsableThickness(taskbar_);
+    }
+
+    EnsureFont();
+    // The swatch cache is keyed by DPI as well as colour, so entries for the
+    // old DPI simply stop being looked up. Clearing here would be wrong: a DPI
+    // change can arrive while a menu is open, because TrackPopupMenuEx runs its
+    // own message pump, and that menu is holding bitmaps from this cache.
+    Relayout();
+}
+
+// ------------------------------------------------------------------- results
+
+void App::OnResult(unsigned monitorIndex, PingResult* result) {
+    if (!result) return;
+    if (monitorIndex >= monitors_.size()) return;   // monitor was removed mid-flight
+
+    monitors_[monitorIndex]->HandleResult(*result);
+    UpdateTooltip();
+}
+
+// --------------------------------------------------------------------- input
+
+MonitorController* App::MonitorAtPoint(POINT clientPoint) {
+    int x = 0;
+    const int gap = MulDiv(kMonitorGap, dpi_, 96);
+
+    for (auto& monitor : monitors_) {
+        const int width = monitor->DesiredWidth();
+        // The gap belongs to the monitor on its left, so there is no dead zone
+        // between grids where a click does nothing.
+        if (clientPoint.x >= x && clientPoint.x < x + width + gap) {
+            return monitor.get();
+        }
+        x += width + gap;
+    }
+
+    return monitors_.empty() ? nullptr : monitors_.back().get();
+}
+
+void App::OnRightClick(POINT screenPoint) {
+    POINT client = screenPoint;
+    ScreenToClient(window_, &client);
+
+    if (MonitorController* monitor = MonitorAtPoint(client)) {
+        monitor->ShowMenu(screenPoint);
+    }
+}
+
+// ------------------------------------------------------------------ monitors
+
+void App::DuplicateMonitor(MonitorController* source) {
+    if (!source) return;
+    if (monitors_.size() >= static_cast<size_t>(defaults::kMaxMonitors)) return;
+
+    MonitorRecord copy;
+    // A fresh identity, the same settings.
+    GUID guid{};
+    if (SUCCEEDED(CoCreateGuid(&guid))) {
+        wchar_t buffer[40];
+        swprintf(buffer, 40, L"%08lX-%04X-%04X-%02X%02X-%02X%02X%02X%02X%02X%02X",
+                 guid.Data1, guid.Data2, guid.Data3, guid.Data4[0], guid.Data4[1],
+                 guid.Data4[2], guid.Data4[3], guid.Data4[4], guid.Data4[5],
+                 guid.Data4[6], guid.Data4[7]);
+        copy.id = buffer;
+    } else {
+        wchar_t buffer[32];
+        swprintf(buffer, 32, L"m%lu", GetTickCount());
+        copy.id = buffer;
+    }
+    copy.settings = source->Settings();
+
+    monitors_.push_back(std::make_unique<MonitorController>(
+        this, copy, window_, static_cast<unsigned>(monitors_.size())));
+
+    PersistMonitors();
+    Relayout();
+}
+
+void App::RemoveMonitor(MonitorController* target) {
+    if (!target || monitors_.size() <= 1) return;
+
+    // Deferred on purpose. This is reached from the target's own menu command
+    // handler, which is itself called from its ShowMenu — erasing it now would
+    // run ~MonitorController while two of its member functions are still on the
+    // stack. Posting lets both return first.
+    //
+    // The id rather than the index: indices are renumbered on every removal, so
+    // a queued index could point at a different monitor by the time it is
+    // handled. Ids never move.
+    pendingRemovalId_ = target->Id();
+    PostMessageW(window_, WM_PINGER_REMOVE, 0, 0);
+}
+
+void App::RemoveMonitorAt(unsigned) {
+    const std::wstring id = pendingRemovalId_;
+    pendingRemovalId_.clear();
+
+    if (id.empty() || monitors_.size() <= 1) return;
+
+    bool removed = false;
+    for (auto it = monitors_.begin(); it != monitors_.end(); ++it) {
+        if ((*it)->Id() != id) continue;
+        monitors_.erase(it);   // the destructor stops its ping session
+        removed = true;
+        break;
+    }
+
+    if (!removed) return;
+
+    // Indices are also the wParam the workers post back, so they have to be
+    // renumbered as soon as one is removed. SetIndex forwards to the ping
+    // session, which is what actually stamps the wParam.
+    for (size_t i = 0; i < monitors_.size(); ++i) {
+        monitors_[i]->SetIndex(static_cast<unsigned>(i));
+    }
+
+    PersistMonitors();
+    Relayout();
+}
+
+void App::PersistMonitors() {
+    std::vector<MonitorRecord> records;
+    records.reserve(monitors_.size());
+    for (const auto& monitor : monitors_) {
+        records.push_back(monitor->Record());
+    }
+    store::PersistMonitors(records);
+}
+
+// ------------------------------------------------------------------ tray icon
+
+bool App::AddTrayIcon() {
+    if (trayIconAdded_) return true;
+
+    NOTIFYICONDATAW data{};
+    data.cbSize = sizeof(data);
+    data.hWnd = window_;
+    data.uID = kTrayIconId;
+    data.uFlags = NIF_ICON | NIF_MESSAGE | NIF_TIP;
+    data.uCallbackMessage = WM_PINGER_TRAY;
+    data.hIcon = LoadIconW(nullptr, IDI_APPLICATION);
+    wcscpy_s(data.szTip, L"Pinger");
+
+    trayIconAdded_ = Shell_NotifyIconW(NIM_ADD, &data) != FALSE;
+    return trayIconAdded_;
+}
+
+void App::RemoveTrayIcon() {
+    if (!trayIconAdded_) return;
+
+    NOTIFYICONDATAW data{};
+    data.cbSize = sizeof(data);
+    data.hWnd = window_;
+    data.uID = kTrayIconId;
+
+    Shell_NotifyIconW(NIM_DELETE, &data);
+    trayIconAdded_ = false;
+}
+
+void App::ShowTrayMenu(POINT screenPoint) {
+    // The tray icon exists so there is always a way back if the widget ends up
+    // somewhere unhelpful, so its menu is the first monitor's menu.
+    if (!monitors_.empty()) {
+        monitors_.front()->ShowMenu(screenPoint);
+    }
+}
+
+void App::UpdateTooltip() {
+    // Kept simple on purpose: the first monitor's text, refreshed in place.
+    // A real multi-region tooltip would need a TTM_ tracking control per grid,
+    // which is a lot of machinery for a hover hint.
+    if (!trayIconAdded_ || monitors_.empty()) return;
+
+    NOTIFYICONDATAW data{};
+    data.cbSize = sizeof(data);
+    data.hWnd = window_;
+    data.uID = kTrayIconId;
+    data.uFlags = NIF_TIP;
+
+    const std::wstring text = monitors_.front()->TooltipText();
+    wcsncpy_s(data.szTip, text.c_str(), _TRUNCATE);
+
+    Shell_NotifyIconW(NIM_MODIFY, &data);
+}
+
+}  // namespace pinger

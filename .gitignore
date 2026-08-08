@@ -1,0 +1,51 @@
+# Build output
+build/
+out/
+release/
+*.zip
+
+# MSVC intermediates
+*.obj
+*.exe
+*.pdb
+*.ilk
+*.idb
+*.res
+*.tlog
+*.log
+*.lastbuildstate
+*.iobj
+*.ipdb
+*.exp
+*.lib
+
+# CMake
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+*.cmake
+!CMakeLists.txt
+
+# Visual Studio
+.vs/
+*.sln
+*.vcxproj
+*.vcxproj.*
+*.user
+*.suo
+*.VC.db
+*.VC.opendb
+ipch/
+
+# CLion / Rider
+.idea/
+
+# VS Code
+.vscode/
+
+# macOS, in case a file is ever copied from one
+.DS_Store
+
+# Windows
+Thumbs.db
+desktop.ini

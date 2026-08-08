@@ -1,0 +1,98 @@
+# Builds Pinger.exe on a real Windows runner with MSVC.
+#
+# This exists for two reasons. The obvious one is that it produces a downloadable
+# .exe without anyone needing Visual Studio installed. The more useful one, at
+# least early on, is that it is the compiler: every push gets checked on Windows
+# and the errors land in the Actions log where you can read them.
+#
+#   Push to main      -> builds, uploads Pinger-windows-x64 as an artifact
+#                        (Actions tab -> latest run -> Artifacts)
+#   Push a v* tag     -> builds and attaches a zip to a GitHub Release
+#
+# Artifacts expire after 90 days; releases do not.
+
+name: build
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+    branches: [main]
+  # Lets you trigger a build by hand from the Actions tab.
+  workflow_dispatch:
+
+permissions:
+  contents: write   # needed to create releases on a tag
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      # Puts cl.exe, rc.exe and link.exe on PATH, the same environment the
+      # "x64 Native Tools Command Prompt" gives you locally.
+      - name: Set up MSVC
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Build
+        run: .\build.bat
+
+      - name: Verify the binary exists
+        shell: pwsh
+        run: |
+          if (-not (Test-Path 'build\Pinger.exe')) {
+            Write-Error 'build\Pinger.exe was not produced'
+            exit 1
+          }
+          $size = (Get-Item 'build\Pinger.exe').Length
+          Write-Host "Pinger.exe built successfully - $size bytes"
+
+      # Ships the exe on its own. The build is /MT (static CRT), so there is no
+      # redistributable to install alongside it.
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Pinger-windows-x64
+          path: |
+            build/Pinger.exe
+            README.md
+            LICENSE
+          if-no-files-found: error
+
+      - name: Package for release
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path release | Out-Null
+          Copy-Item build\Pinger.exe release\
+          Copy-Item README.md release\
+          Copy-Item LICENSE release\
+          Copy-Item DISCLAIMER.md release\
+          Compress-Archive -Path release\* -DestinationPath Pinger-windows-x64.zip
+
+      - name: Create release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: Pinger-windows-x64.zip
+          generate_release_notes: true
+          body: |
+            ## Download
+
+            Grab `Pinger-windows-x64.zip`, unzip it anywhere, and run `Pinger.exe`.
+            There is no installer and nothing to configure — a grid appears in your
+            taskbar, already pinging `8.8.8.8`. Right-click it to change anything.
+
+            **Windows will show "Windows protected your PC" the first time.** The
+            binary is unsigned, and a code-signing certificate costs several hundred
+            dollars a year. Click **More info -> Run anyway**, or build it yourself
+            from source — code you compile locally is never flagged.
+
+            To start it at login, put a shortcut in the folder that opens when you
+            press Win+R and enter `shell:startup`.
