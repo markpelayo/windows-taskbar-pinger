@@ -89,7 +89,7 @@ precisely so that cloning and building needs nothing but a compiler.
 
 ## Status
 
-**v1.4.2. Working well on Windows 11** — daily use, left running, no known outstanding issues.
+**v1.4.3. Working well on Windows 11** — daily use, left running, no known outstanding issues.
 
 Everything in the menu reference below does what it says: the grid, the latency readout, multiple
 monitors, profiles, the taskbar embedding, surviving an Explorer restart, and starting with Windows.
@@ -138,7 +138,7 @@ cmake --build build --config Release
 
 ### Start it at login
 
-Right-click the grid, open **Run at startup**, and choose **Default** — or a delay.
+Right-click the grid, open **Run at startup**, and choose **On** — or a delay.
 
 That writes a value under `HKEY_CURRENT_USER\...\CurrentVersion\Run`, which needs no administrator
 rights and shows up in Task Manager's **Startup** tab, so it can be turned off from there too. Move
@@ -213,7 +213,7 @@ Right-click any grid:
 | **Restore monitor defaults** | Reset this grid to the factory settings. Greyed out while nothing has been changed, so it doubles as an indicator of whether this grid is customised. Affects only the grid you right-clicked — a note saying so appears once you have more than one |
 | **Duplicate this monitor** | Add another grid with a copy of these settings |
 | **Remove this monitor** | Delete just this grid (disabled when one is left) |
-| **Run at startup ▸** | **Off**, **Default**, or a delay of 5–60 seconds. Adds or removes an `HKEY_CURRENT_USER` Run entry — no admin rights, and visible in Task Manager's Startup tab. The parent row shows the current setting |
+| **Run at startup ▸** | **Off**, **On**, or a delay of 5–60 seconds. Adds or removes an `HKEY_CURRENT_USER` Run entry — no admin rights, and visible in Task Manager's Startup tab. The parent row shows the current setting |
 | **Quit Pinger** | |
 
 Every setting persists across launches, per monitor, in `%APPDATA%\Pinger\settings.ini`.

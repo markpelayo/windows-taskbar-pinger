@@ -9,6 +9,14 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 Nothing yet.
 
+## [1.4.3] — 2026-08-10
+
+### Changed
+
+- **The startup submenu says On rather than Default.** "Default" describes a factory setting; the
+  item simply turns the thing on, and sits next to **Off**, which is what it is actually the
+  opposite of.
+
 ## [1.4.2] — 2026-08-09
 
 ### Changed
@@ -476,7 +484,8 @@ These are deliberate differences, not omissions:
 - **Keyboard shortcuts.** The macOS menu had ⌘L, ⌘D, ⌘S and friends. Context menus opened by
   right-click have no equivalent accelerator context.
 
-[Unreleased]: https://github.com/markpelayo/windows-taskbar-pinger/compare/v1.4.2...HEAD
+[Unreleased]: https://github.com/markpelayo/windows-taskbar-pinger/compare/v1.4.3...HEAD
+[1.4.3]: https://github.com/markpelayo/windows-taskbar-pinger/releases/tag/v1.4.3
 [1.4.2]: https://github.com/markpelayo/windows-taskbar-pinger/releases/tag/v1.4.2
 [1.4.1]: https://github.com/markpelayo/windows-taskbar-pinger/releases/tag/v1.4.1
 [1.4.0]: https://github.com/markpelayo/windows-taskbar-pinger/releases/tag/v1.4.0
@@ -487,6 +496,7 @@ These are deliberate differences, not omissions:
 [1.1.1]: https://github.com/markpelayo/windows-taskbar-pinger/releases/tag/v1.1.1
 [1.1.0]: https://github.com/markpelayo/windows-taskbar-pinger/releases/tag/v1.1.0
 [1.0.5]: https://github.com/markpelayo/windows-taskbar-pinger/releases/tag/v1.0.5
+[1.4.3]: https://github.com/markpelayo/windows-taskbar-pinger/releases/tag/v1.4.3
 [1.4.2]: https://github.com/markpelayo/windows-taskbar-pinger/releases/tag/v1.4.2
 [1.4.1]: https://github.com/markpelayo/windows-taskbar-pinger/releases/tag/v1.4.1
 [1.4.0]: https://github.com/markpelayo/windows-taskbar-pinger/releases/tag/v1.4.0

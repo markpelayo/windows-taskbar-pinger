@@ -705,7 +705,7 @@ HMENU MonitorController::BuildMenu(std::vector<HMENU>* ownedSubmenus) {
                    MF_STRING | ((startup.enabled && startup.delaySeconds == 0)
                                     ? MF_CHECKED
                                     : MF_UNCHECKED),
-                   IDM_AUTOSTART_NOW, L"Default");
+                   IDM_AUTOSTART_NOW, L"On");
 
         AppendSeparator(startupMenu);
 
@@ -726,6 +726,8 @@ HMENU MonitorController::BuildMenu(std::vector<HMENU>* ownedSubmenus) {
                        IDM_AUTOSTART_DELAY_FIRST + i, label);
         }
 
+        // The parent row states the current setting, so the answer to "does this
+        // start with Windows, and when" needs no travel into the submenu.
         // The parent row states the current setting, so the answer to "does this
         // start with Windows, and when" needs no travel into the submenu.
         wchar_t title[64];
