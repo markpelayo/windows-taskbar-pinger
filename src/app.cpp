@@ -440,7 +440,7 @@ void App::Relayout() {
     const int gap = MulDiv(kMonitorGap, dpi_, 96);
 
     for (size_t i = 0; i < monitors_.size(); ++i) {
-        monitors_[i]->Layout(dpi_, availableThickness_);
+        monitors_[i]->Layout(dpi_, availableThickness_, font_.get());
         if (i > 0) total += gap;
         total += monitors_[i]->DesiredWidth();
     }

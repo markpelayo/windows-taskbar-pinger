@@ -44,7 +44,8 @@ public:
     int DesiredWidth() const;
 
     // Re-measures for the current DPI and available thickness, then repaints.
-    void Layout(int dpi, int availableThickness);
+    // `font` is the host's cached font, needed to measure the latency text.
+    void Layout(int dpi, int availableThickness, HFONT font);
 
     // Paints into the given DC; called from the host window's WM_PAINT.
     // `slot` is this monitor's share of the client area, and `font` is the
@@ -74,6 +75,11 @@ private:
     void PersistSettings();
 
     std::wstring AverageLatencyText() const;
+
+    // Measures the space the readout actually needs, rather than reserving a
+    // worst case. See the definition for why this is not simply the width of
+    // the current string.
+    void MeasureLatencyWidth(HFONT font);
     bool HasAverageLatency() const { return latencyCount_ > 0; }
     double AverageLatency() const;
 
@@ -92,6 +98,13 @@ private:
     GridMetrics                  metrics_;
     int                          dpi_ = 96;
     int                          availableThickness_ = 24;
+
+    // Measured width of the latency readout, and the character count it was
+    // measured for. The count is what decides when a re-measure is needed:
+    // "5 ms" becoming "6 ms" changes nothing, "9 ms" becoming "10 ms" does.
+    int    latencyWidth_ = 0;
+    size_t latencyLength_ = 0;
+    HFONT  latencyFont_ = nullptr;
 
     // Oldest sample first. Grows to CellCount(), then rolls: drop the oldest,
     // append the newest, so every cell shifts back one position.
