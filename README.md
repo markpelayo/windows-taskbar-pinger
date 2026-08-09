@@ -73,10 +73,17 @@ precisely so that cloning and building needs nothing but a compiler.
 
 ## Status
 
-Early. It builds and runs on Windows 11, and the core — grid, pinging, menu, taskbar embedding —
-works. It has not been through much beyond that: other Windows versions, other DPI scalings, other
-taskbar positions and multi-monitor setups are all lightly tested at best. Bug reports are genuinely
-useful right now.
+**v1.0.0.** It builds and runs on Windows 11, and the core — grid, pinging, menu, taskbar embedding
+— works.
+
+Testing beyond that is thin. It has been exercised on Windows 11 at 100% scaling with a
+bottom-docked taskbar, and that is about it: other Windows versions, other DPI scalings, taskbars
+docked to other edges, and multi-monitor setups are all lightly tested at best. The taskbar
+embedding is undocumented (see below), which makes those cases more likely to differ than they
+would be for an app using supported APIs.
+
+Bug reports are genuinely useful right now — see [CONTRIBUTING.md](CONTRIBUTING.md) for what to
+include.
 
 ## Build
 

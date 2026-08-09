@@ -83,6 +83,9 @@ jobs:
           files: Pinger-windows-x64.zip
           generate_release_notes: true
           body: |
+            See [CHANGELOG.md](https://github.com/markpelayo/windows-taskbar-pinger/blob/main/CHANGELOG.md)
+            for what changed, including the deliberate differences from the macOS version.
+
             ## Download
 
             Grab `Pinger-windows-x64.zip`, unzip it anywhere, and run `Pinger.exe`.

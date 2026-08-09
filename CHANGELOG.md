@@ -7,26 +7,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-### Changed
+Nothing yet.
 
-- **The widget now anchors to the notification area** instead of the taskbar's left edge. At the
-  far left it overlapped the Windows 11 weather and news widget; the app buttons between them are
-  centred and move as windows open and close, so the notification area is the only stable anchor.
-  Its position is re-checked as the tray changes width.
-- **Latency text follows the shell's theme.** It was drawn with `GetSysColor(COLOR_BTNTEXT)`, which
-  reports the *apps* theme — black under a default Windows 11 install, and unreadable on the dark
-  taskbar. It now reads `SystemUsesLightTheme`, which is what the taskbar itself follows.
-- **Latency text is 12 pt**, up from 9. The taskbar clock's size works because you already know
-  roughly what a clock says; a latency figure has to actually be read.
-- **Default grid is 4 rows**, up from 3.
-- The "about" menu item points at this repository rather than the macOS one.
-
-### Known issues
-
-- The widget is not draggable; its position is computed rather than chosen.
-- Only lightly tested beyond Windows 11 at 100% scaling with a bottom-docked taskbar.
-
-## [1.0.0] — unreleased
+## [1.0.0] — 2026-08-09
 
 First Windows release. A port of
 [macos-menubar-pinger](https://github.com/markpelayo/macos-menubar-pinger) 1.1.0, which was itself
@@ -46,6 +29,31 @@ a macOS port of the idea behind the old
 - Notification-area icon, so there is always a way to reach the menu.
 - Settings persisted to `%APPDATA%\Pinger\settings.ini`.
 - GitHub Actions workflow that builds on Windows and attaches a binary to tagged releases.
+
+### Fixed before release
+
+Found on the first run on real hardware, after the port was written blind on a Mac:
+
+- **The widget landed on top of the Windows 11 weather and news widget.** It was placed at a fixed
+  offset from the taskbar's left edge, which is exactly where that widget lives. It now anchors to
+  the notification area — the only region of the taskbar that stays put, since the app buttons are
+  centred and shift as windows open and close. The offset is recomputed on every layout, and the
+  tray's bounds are watched so the widget follows when an icon appears or the clock changes width.
+- **The latency readout was black on a dark taskbar,** effectively invisible. It was drawn with
+  `GetSysColor(COLOR_BTNTEXT)`, which reports the *apps* theme; Windows tracks the shell's theme
+  separately, and the default is light apps on a dark taskbar. It now reads `SystemUsesLightTheme`,
+  falling back to white when the value is absent.
+- **The readout was too small to read** at 9 pt beside a 6 px grid; it is now 12 pt, with the
+  reserved width widened to match.
+- Default grid changed from 3 rows to 4.
+
+### Known issues
+
+- The widget is not draggable; its position is computed rather than chosen.
+- Tested on Windows 11 at 100% scaling with a bottom-docked taskbar. Other versions, scalings,
+  taskbar positions and multi-monitor setups are lightly tested at best.
+- If `rows × (cell + spacing)` exceeds the taskbar height, cell height is shrunk to fit and the
+  grid looks squashed rather than square. Reduce **Cell size** if the default 4 rows does this.
 
 ### Changed from the macOS version
 
