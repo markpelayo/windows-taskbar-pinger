@@ -9,11 +9,20 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 Nothing yet.
 
+## [1.2.1] — 2026-08-09
+
+### Changed
+
+- The startup toggle is now labelled **Run at startup** rather than **Start with Windows**. Same
+  behaviour, same registry entry — only the wording in the menu, the policy-blocked message and the
+  documentation.
+
 ## [1.2.0] — 2026-08-09
 
 ### Added
 
-- **Run at startup**, a toggle near the bottom of the menu. Previously this meant putting a
+- **Start with Windows**, a toggle near the bottom of the menu (renamed to **Run at startup**
+  in 1.2.1). Previously this meant putting a
   shortcut in the Startup folder by hand, which the README explained and nobody enjoys.
 
   It writes a value under `HKEY_CURRENT_USER\...\CurrentVersion\Run`. Per-user rather than
@@ -346,11 +355,13 @@ These are deliberate differences, not omissions:
 - **Keyboard shortcuts.** The macOS menu had ⌘L, ⌘D, ⌘S and friends. Context menus opened by
   right-click have no equivalent accelerator context.
 
-[Unreleased]: https://github.com/markpelayo/windows-taskbar-pinger/compare/v1.2.0...HEAD
+[Unreleased]: https://github.com/markpelayo/windows-taskbar-pinger/compare/v1.2.1...HEAD
+[1.2.1]: https://github.com/markpelayo/windows-taskbar-pinger/releases/tag/v1.2.1
 [1.2.0]: https://github.com/markpelayo/windows-taskbar-pinger/releases/tag/v1.2.0
 [1.1.1]: https://github.com/markpelayo/windows-taskbar-pinger/releases/tag/v1.1.1
 [1.1.0]: https://github.com/markpelayo/windows-taskbar-pinger/releases/tag/v1.1.0
 [1.0.5]: https://github.com/markpelayo/windows-taskbar-pinger/releases/tag/v1.0.5
+[1.2.1]: https://github.com/markpelayo/windows-taskbar-pinger/releases/tag/v1.2.1
 [1.2.0]: https://github.com/markpelayo/windows-taskbar-pinger/releases/tag/v1.2.0
 [1.1.1]: https://github.com/markpelayo/windows-taskbar-pinger/releases/tag/v1.1.1
 [1.1.0]: https://github.com/markpelayo/windows-taskbar-pinger/releases/tag/v1.1.0
