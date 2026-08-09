@@ -9,6 +9,42 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 Nothing yet.
 
+## [1.0.1] — 2026-08-09
+
+Everything user-visible that was wrong with 1.0.0 on a default Windows 11 desktop. That release was
+tagged from a build that had never been run — the port was written on a Mac — and these four turned
+up within minutes of it starting for the first time.
+
+**If you have 1.0.0, replace it.** Nothing in it is dangerous, but the latency readout is invisible
+and the grid sits on top of the weather widget.
+
+### Fixed
+
+- **The widget landed on top of the Windows 11 weather and news widget.** It was placed at a fixed
+  offset from the taskbar's left edge, which is exactly where that widget lives. It now anchors to
+  the notification area — the only region of the taskbar that stays put, since the app buttons are
+  centred and shift as windows open and close. The offset is recomputed on every layout, and the
+  tray's bounds are watched so the widget follows when an icon appears or the clock changes width.
+- **The latency readout was black on a dark taskbar,** so effectively invisible. It was drawn with
+  `GetSysColor(COLOR_BTNTEXT)`, which reports the *apps* theme; Windows tracks the shell's theme
+  separately, and the shipped default is light apps on a dark taskbar. It now reads
+  `SystemUsesLightTheme`, falling back to white when that value is absent.
+- **The readout was too small to read** at 9 pt beside a 6 px grid. It is now 12 pt, with the
+  reserved width widened to match.
+- **The about menu item opened the macOS repository** instead of this one.
+
+### Changed
+
+- Default grid is 4 rows, up from 3.
+
+### Known issues
+
+- The widget is not draggable; its position is computed rather than chosen.
+- Tested on Windows 11 at 100% scaling with a bottom-docked taskbar. Other versions, scalings,
+  taskbar positions and multi-monitor setups are lightly tested at best.
+- If `rows × (cell + spacing)` exceeds the taskbar height, cell height is shrunk to fit and the
+  grid looks squashed rather than square. Reduce **Cell size** if the default 4 rows does this.
+
 ## [1.0.0] — 2026-08-09
 
 First Windows release. A port of
@@ -30,30 +66,11 @@ a macOS port of the idea behind the old
 - Settings persisted to `%APPDATA%\Pinger\settings.ini`.
 - GitHub Actions workflow that builds on Windows and attaches a binary to tagged releases.
 
-### Fixed before release
-
-Found on the first run on real hardware, after the port was written blind on a Mac:
-
-- **The widget landed on top of the Windows 11 weather and news widget.** It was placed at a fixed
-  offset from the taskbar's left edge, which is exactly where that widget lives. It now anchors to
-  the notification area — the only region of the taskbar that stays put, since the app buttons are
-  centred and shift as windows open and close. The offset is recomputed on every layout, and the
-  tray's bounds are watched so the widget follows when an icon appears or the clock changes width.
-- **The latency readout was black on a dark taskbar,** effectively invisible. It was drawn with
-  `GetSysColor(COLOR_BTNTEXT)`, which reports the *apps* theme; Windows tracks the shell's theme
-  separately, and the default is light apps on a dark taskbar. It now reads `SystemUsesLightTheme`,
-  falling back to white when the value is absent.
-- **The readout was too small to read** at 9 pt beside a 6 px grid; it is now 12 pt, with the
-  reserved width widened to match.
-- Default grid changed from 3 rows to 4.
-
 ### Known issues
 
-- The widget is not draggable; its position is computed rather than chosen.
-- Tested on Windows 11 at 100% scaling with a bottom-docked taskbar. Other versions, scalings,
-  taskbar positions and multi-monitor setups are lightly tested at best.
-- If `rows × (cell + spacing)` exceeds the taskbar height, cell height is shrunk to fit and the
-  grid looks squashed rather than square. Reduce **Cell size** if the default 4 rows does this.
+**Superseded by 1.0.1 — use that instead.** This release was tagged from code that had never been
+run. The latency readout is drawn in black on the dark taskbar and is effectively invisible, and
+the widget is positioned on top of the Windows 11 weather and news widget.
 
 ### Changed from the macOS version
 
@@ -83,5 +100,6 @@ These are deliberate differences, not omissions:
 - **Keyboard shortcuts.** The macOS menu had ⌘L, ⌘D, ⌘S and friends. Context menus opened by
   right-click have no equivalent accelerator context.
 
-[Unreleased]: https://github.com/markpelayo/windows-taskbar-pinger/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/markpelayo/windows-taskbar-pinger/compare/v1.0.1...HEAD
+[1.0.1]: https://github.com/markpelayo/windows-taskbar-pinger/releases/tag/v1.0.1
 [1.0.0]: https://github.com/markpelayo/windows-taskbar-pinger/releases/tag/v1.0.0
