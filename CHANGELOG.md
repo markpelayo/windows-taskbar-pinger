@@ -9,6 +9,22 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 Nothing yet.
 
+## [1.1.1] — 2026-08-09
+
+### Changed
+
+- **Toggling Fill in rows now clears the grid,** the way **Clear monitor history** does.
+
+  Re-flowing the existing samples into the new direction is what the data says should happen, but
+  it is not what you can actually *see*. A full grid of blue cells looks identical in either order,
+  so the one thing you switched direction to observe — which way new cells travel — stayed invisible
+  until the whole window had rolled over. Emptying it makes the new order obvious from the next
+  packet onward.
+
+  The cost is the history and the running average, both of which restart. That is the same trade
+  **Clear monitor history** already makes, and switching fill direction is a deliberate act rather
+  than something you do by accident.
+
 ## [1.1.0] — 2026-08-09
 
 A full audit pass for correctness, leaks and footprint. No new features; the
@@ -130,9 +146,9 @@ version bumps to 1.1.0 because the internals changed substantially.
   On, cells run left to right along the top row and then down — the way text is read — with the
   newest sample at the bottom right.
 
-  Only the mapping from sample to cell position changes. The same samples occupy the same number of
-  cells, the rolling window behaves identically, and the average latency is computed from the same
-  set either way, so switching direction re-flows the existing history rather than disturbing it.
+  Only the mapping from sample to cell position changes, so the average latency is computed from
+  the same set either way. (From 1.1.1 the grid is cleared on switching, so the new direction is
+  actually visible.)
 
 ## [1.0.4] — 2026-08-09
 
@@ -308,9 +324,11 @@ These are deliberate differences, not omissions:
 - **Keyboard shortcuts.** The macOS menu had ⌘L, ⌘D, ⌘S and friends. Context menus opened by
   right-click have no equivalent accelerator context.
 
-[Unreleased]: https://github.com/markpelayo/windows-taskbar-pinger/compare/v1.1.0...HEAD
+[Unreleased]: https://github.com/markpelayo/windows-taskbar-pinger/compare/v1.1.1...HEAD
+[1.1.1]: https://github.com/markpelayo/windows-taskbar-pinger/releases/tag/v1.1.1
 [1.1.0]: https://github.com/markpelayo/windows-taskbar-pinger/releases/tag/v1.1.0
 [1.0.5]: https://github.com/markpelayo/windows-taskbar-pinger/releases/tag/v1.0.5
+[1.1.1]: https://github.com/markpelayo/windows-taskbar-pinger/releases/tag/v1.1.1
 [1.1.0]: https://github.com/markpelayo/windows-taskbar-pinger/releases/tag/v1.1.0
 [1.0.5]: https://github.com/markpelayo/windows-taskbar-pinger/releases/tag/v1.0.5
 [1.0.4]: https://github.com/markpelayo/windows-taskbar-pinger/releases/tag/v1.0.4

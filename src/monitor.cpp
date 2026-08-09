@@ -865,10 +865,15 @@ void MonitorController::HandleCommand(int command) {
         case IDM_TOGGLE_FILL:
             s.fillHorizontal = !s.fillHorizontal;
             PersistSettings();
-            // Only the paint order changes — same cells, same rolling window,
-            // same average — so a repaint is all that is needed. The history
-            // stays put and simply re-flows into the new direction.
-            Invalidate();
+            // Clears the grid as well, the way "Clear monitor history" does.
+            //
+            // Re-flowing the existing samples into the new direction is what the
+            // data says should happen, but it is not what you can actually see:
+            // a full grid of blue cells looks identical either way, so the one
+            // thing you switched direction to observe — which way new cells
+            // travel — is invisible until the whole window has rolled over.
+            // Emptying it makes the new order obvious from the very next packet.
+            ClearHistory();
             break;
 
         case IDM_SUCCESS_CUSTOM:
