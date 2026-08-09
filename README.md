@@ -14,6 +14,9 @@ which was itself a macOS port of the idea behind the old
 [Windows taskbar ping widget](https://superuser.com/questions/661132/show-current-ping-to-website-on-taksbar).
 So it has come home.
 
+Download it from [Releases](https://github.com/markpelayo/windows-taskbar-pinger/releases), unzip,
+run. Nothing to install and nothing to configure.
+
 ## What it's for
 
 You're on a call, or SSH'd into something, and the connection feels off. Was that a blip or is
@@ -78,17 +81,26 @@ precisely so that cloning and building needs nothing but a compiler.
 
 ## Status
 
-**v1.2.2.** It builds and runs on Windows 11, and the core — grid, pinging, menu, taskbar embedding
-— works.
+**v1.2.2. Working well on Windows 11** — daily use, left running, no known outstanding issues.
 
-Testing beyond that is thin. It has been exercised on Windows 11 at 100% scaling with a
-bottom-docked taskbar, and that is about it: other Windows versions, other DPI scalings, taskbars
-docked to other edges, and multi-monitor setups are all lightly tested at best. The taskbar
-embedding is undocumented (see below), which makes those cases more likely to differ than they
-would be for an app using supported APIs.
+Everything in the menu reference below does what it says: the grid, the latency readout, multiple
+monitors, profiles, the taskbar embedding, surviving an Explorer restart, and starting with Windows.
 
-Bug reports are genuinely useful right now — see [CONTRIBUTING.md](CONTRIBUTING.md) for what to
-include.
+Two honest qualifications, neither of which is a reason not to use it:
+
+**It has been proven on one configuration** — Windows 11, 100% scaling, a bottom-docked taskbar,
+a single display. Everything else is untested rather than known-broken: Windows 10, fractional
+scaling, a taskbar docked left or right, and multi-monitor setups. The code handles all of them
+deliberately, but "handled in code" and "seen working" are different claims and only the second one
+is worth much.
+
+**The taskbar embedding is undocumented.** It relies on shell behaviour Microsoft has never
+committed to, so a future Windows update could change it. That is a structural property of the
+approach, not a bug waiting to be found — see [how the taskbar part works](#how-the-taskbar-part-works-and-what-that-costs).
+The app falls back to a floating bar if embedding ever stops working, so the worst case is cosmetic.
+
+Bug reports are welcome — see [CONTRIBUTING.md](CONTRIBUTING.md) for what to include. Reports from
+the untested configurations above are the most useful kind.
 
 ## Build
 
@@ -208,9 +220,10 @@ the taskbar, because as far as the shell is concerned it *is* part of it. Shippi
 
 Consequences you should know about:
 
-- **It can break.** A Windows update that changes the shell's window structure could stop it
-  working. When embedding fails the app falls back to a floating always-on-top bar positioned over
-  the taskbar — less integrated, but never invisible.
+- **It could break in future.** A Windows update that changes the shell's window structure could
+  stop it working. It has been stable in practice on Windows 11, but nothing obliges Microsoft to
+  keep it that way. When embedding fails the app falls back to a floating always-on-top bar
+  positioned over the taskbar — less integrated, but never invisible.
 - **Explorer restarts detach it.** Handled: the app listens for the shell's `TaskbarCreated`
   broadcast and re-embeds itself.
 - **The taskbar doesn't announce moves.** There's no notification when it changes edge or size, so
