@@ -33,6 +33,11 @@ cmake --build build --config Release
 Every push is built on Windows by GitHub Actions, so CI will catch it if a change breaks the build
 on a clean machine.
 
+Dependabot opens a weekly PR when the actions the workflow uses move — usually because GitHub has
+retired the Node runtime an action declares, which shows up as a deprecation annotation on every
+build until it is bumped. Those PRs build themselves before you merge them, so a green check means
+the new versions work.
+
 ## Layout
 
 ```
