@@ -9,6 +9,31 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 Nothing yet.
 
+## [1.0.4] — 2026-08-09
+
+### Fixed
+
+- **The menu often ignored the first click and only opened on the second.** `TrackPopupMenu`
+  requires its owner window to be the foreground window, and `SetForegroundWindow` fails silently on
+  a `WS_CHILD` — which the widget is, being parented into the taskbar. Menus are now owned by a
+  hidden top-level window created for the purpose, which can legitimately be foregrounded.
+
+### Changed
+
+- **Saved profiles can be deleted from the row itself.** Each row in **Load monitor profile** now
+  carries an ✕ on the right; clicking it asks for confirmation and removes the profile, while
+  clicking anywhere else on the row loads it as before. This restores the affordance the macOS
+  version had, and replaces the separate **Delete profile** submenu.
+
+  Win32 menu items cannot host child controls the way the macOS `ProfileRowView` did, so the rows
+  are owner-drawn and the click is resolved by comparing the cursor against the row's on-screen
+  rectangle — captured while the row is still highlighted, since the menu is destroyed before the
+  command is delivered.
+
+- **Load monitor profile is greyed out when nothing is saved,** instead of opening a submenu whose
+  only entry says "No saved profiles". Making someone travel into a menu to discover it is empty is
+  a small rudeness the disabled item avoids.
+
 ## [1.0.3] — 2026-08-09
 
 ### Added
@@ -143,8 +168,8 @@ These are deliberate differences, not omissions:
   unnecessary.
 - **Taskbar embedding replaces `NSStatusItem`.** Windows has no arbitrary-width status slot; see
   the README for how this works and what it costs.
-- **Profile deletion is a submenu**, not an ✕ button on each row. Win32 menu items cannot host
-  child controls the way the macOS `ProfileRowView` did.
+- **Profile deletion was a submenu** rather than an ✕ button on each row. Win32 menu items cannot host
+  child controls the way the macOS `ProfileRowView` did. (Owner-drawn rows restored the ✕ in 1.0.4.)
 - **Settings are INI, not a plist.** Hand-editable, and a correct parser is eighty lines rather
   than several hundred.
 - **`Cell size` and `Cell spacing` are in pixels**, not points, and scale with DPI.
@@ -158,7 +183,8 @@ These are deliberate differences, not omissions:
 - **Keyboard shortcuts.** The macOS menu had ⌘L, ⌘D, ⌘S and friends. Context menus opened by
   right-click have no equivalent accelerator context.
 
-[Unreleased]: https://github.com/markpelayo/windows-taskbar-pinger/compare/v1.0.3...HEAD
+[Unreleased]: https://github.com/markpelayo/windows-taskbar-pinger/compare/v1.0.4...HEAD
+[1.0.4]: https://github.com/markpelayo/windows-taskbar-pinger/releases/tag/v1.0.4
 [1.0.3]: https://github.com/markpelayo/windows-taskbar-pinger/releases/tag/v1.0.3
 [1.0.2]: https://github.com/markpelayo/windows-taskbar-pinger/releases/tag/v1.0.2
 [1.0.1]: https://github.com/markpelayo/windows-taskbar-pinger/releases/tag/v1.0.1

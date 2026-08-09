@@ -73,7 +73,7 @@ precisely so that cloning and building needs nothing but a compiler.
 
 ## Status
 
-**v1.0.3.** It builds and runs on Windows 11, and the core — grid, pinging, menu, taskbar embedding
+**v1.0.4.** It builds and runs on Windows 11, and the core — grid, pinging, menu, taskbar embedding
 — works.
 
 Testing beyond that is thin. It has been exercised on Windows 11 at 100% scaling with a
@@ -159,7 +159,7 @@ Right-click any grid:
 | **Ping now** | Force an immediate sample |
 | **Clear monitor history** | Empty the grid |
 | **Save monitor profile ▸** | **New profile…**, or pick a listed profile to overwrite it |
-| **Load monitor profile ▸** | Apply a saved profile; **Delete profile ▸** removes one |
+| **Load monitor profile ▸** | Apply a saved profile. Each row carries an ✕ on the right — click that instead to delete it. Greyed out when nothing is saved |
 | **Restore monitor defaults** | Reset this grid to the factory settings |
 | **Duplicate this monitor** | Add another grid with a copy of these settings |
 | **Remove this monitor** | Delete just this grid (disabled when one is left) |

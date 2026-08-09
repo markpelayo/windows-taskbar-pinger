@@ -61,6 +61,11 @@ App::~App() {
     monitors_.clear();
     ClearSwatchCache();
 
+    if (menuOwner_) {
+        DestroyWindow(menuOwner_);
+        menuOwner_ = nullptr;
+    }
+
     if (window_) {
         DestroyWindow(window_);
         window_ = nullptr;
@@ -87,8 +92,6 @@ bool App::Initialise(HINSTANCE instance) {
         if (GetLastError() != ERROR_CLASS_ALREADY_EXISTS) return false;
     }
 
-    taskbarCreatedMessage_ = RegisterTaskbarCreatedMessage();
-
     // Created as a popup first, then converted to a child if embedding works.
     // WS_EX_LAYERED gives us the colour key that lets the taskbar show through;
     // without it the widget would sit on an opaque rectangle, and GDI cannot
@@ -100,6 +103,20 @@ bool App::Initialise(HINSTANCE instance) {
     if (!window_) return false;
 
     SetLayeredWindowAttributes(window_, kChromaKey, 0, LWA_COLORKEY);
+
+    // The hidden top-level window that owns popup menus. Never shown, never
+    // sized — it exists solely to be something SetForegroundWindow will accept,
+    // which a WS_CHILD widget is not. See App::MenuOwner.
+    menuOwner_ = CreateWindowExW(WS_EX_TOOLWINDOW, kWindowClass, L"Pinger menus",
+                                 WS_POPUP, 0, 0, 0, 0, nullptr, nullptr, instance,
+                                 this);
+    if (!menuOwner_) return false;
+
+    // Registered only now that both windows exist. Registering it earlier left
+    // a window during CreateWindowExW where a broadcast could be delivered with
+    // window_ still null — and Relayout would then call
+    // InvalidateRect(nullptr, ...), which repaints every window on the desktop.
+    taskbarCreatedMessage_ = RegisterTaskbarCreatedMessage();
 
     taskbar_ = QueryTaskbar();
     dpi_ = taskbar_.valid ? taskbar_.dpi : 96;
@@ -215,6 +232,192 @@ bool App::OnDragButtonUp() {
     return true;
 }
 
+// --------------------------------------------------- owner-drawn profile rows
+//
+// The macOS version put an ✕ button on each saved-profile row using a custom
+// NSView. Win32 menu items cannot host child controls, so the row is drawn by
+// hand instead: the name on the left, a dismiss glyph on the right, and a hit
+// test on the way out that decides which of the two the click meant.
+//
+// The hit test has to be done indirectly. TrackPopupMenuEx returns only a
+// command id, and by then the menu window is destroyed, so the item's on-screen
+// rectangle is captured while it is still highlighted — see OnMenuSelect.
+
+namespace {
+
+// Width of the glyph column, in logical pixels at 96 DPI.
+constexpr int kDeleteGlyphColumn = 26;
+
+// Left inset for the row's text, chosen to line up with the check-mark gutter
+// of the ordinary items above and below it.
+constexpr int kProfileTextInset = 22;
+
+// U+2715 MULTIPLICATION X. Segoe UI has it, and it reads as a dismiss control
+// rather than as the letter x.
+constexpr wchar_t kDeleteGlyph[] = L"✕";
+
+}  // namespace
+
+void App::SetProfileMenuNames(std::vector<std::wstring> names) {
+    profileMenuNames_ = std::move(names);
+}
+
+HFONT App::MenuFont() {
+    if (menuFont_) return menuFont_.get();
+
+    // The shell's own menu font, so an owner-drawn row is indistinguishable
+    // from the ordinary items around it.
+    NONCLIENTMETRICSW metrics{};
+    metrics.cbSize = sizeof(metrics);
+    if (SystemParametersInfoW(SPI_GETNONCLIENTMETRICS, sizeof(metrics), &metrics, 0)) {
+        menuFont_.reset(CreateFontIndirectW(&metrics.lfMenuFont));
+    }
+
+    return menuFont_.get();
+}
+
+void App::OnMeasureProfileItem(MEASUREITEMSTRUCT* measure) {
+    if (!measure || measure->CtlType != ODT_MENU) return;
+
+    // Item data is the index plus one; see the AppendMenuW call that sets it.
+    if (measure->itemData == 0) return;
+    const size_t index = static_cast<size_t>(measure->itemData) - 1;
+    if (index >= profileMenuNames_.size()) return;
+
+    const std::wstring& name = profileMenuNames_[index];
+
+    ScopedWindowDC screen(nullptr, GetDC(nullptr));
+    if (!screen) return;
+
+    HFONT font = MenuFont();
+    if (!font) return;
+
+    SelectGuard fontGuard(screen.get(), font);
+
+    SIZE extent{};
+    GetTextExtentPoint32W(screen.get(), name.c_str(), static_cast<int>(name.size()),
+                          &extent);
+
+    measure->itemWidth = static_cast<UINT>(extent.cx + MulDiv(
+        kProfileTextInset + kDeleteGlyphColumn + 8, dpi_, 96));
+    // A couple of pixels of breathing room, and never shorter than a standard
+    // menu row or the list looks cramped next to the items around it.
+    measure->itemHeight = static_cast<UINT>(
+        std::max<int>(extent.cy + MulDiv(6, dpi_, 96),
+                      GetSystemMetrics(SM_CYMENU)));
+}
+
+void App::OnDrawProfileItem(DRAWITEMSTRUCT* draw) {
+    if (!draw || draw->CtlType != ODT_MENU || !draw->hDC) return;
+
+    if (draw->itemData == 0) return;
+    const size_t index = static_cast<size_t>(draw->itemData) - 1;
+    if (index >= profileMenuNames_.size()) return;
+
+    const std::wstring& name = profileMenuNames_[index];
+    const bool selected = (draw->itemState & ODS_SELECTED) != 0;
+
+    // Background first. GetSysColorBrush returns a shared brush that must not
+    // be deleted, which is why it is used directly rather than wrapped.
+    FillRect(draw->hDC, &draw->rcItem,
+             GetSysColorBrush(selected ? COLOR_HIGHLIGHT : COLOR_MENU));
+
+    HFONT font = MenuFont();
+    if (!font) return;
+
+    SelectGuard fontGuard(draw->hDC, font);
+    const int previousMode = SetBkMode(draw->hDC, TRANSPARENT);
+    const COLORREF previousColor = SetTextColor(
+        draw->hDC, GetSysColor(selected ? COLOR_HIGHLIGHTTEXT : COLOR_MENUTEXT));
+
+    const int glyphColumn = MulDiv(kDeleteGlyphColumn, dpi_, 96);
+
+    RECT textRect = draw->rcItem;
+    textRect.left += MulDiv(kProfileTextInset, dpi_, 96);
+    textRect.right -= glyphColumn;
+    DrawTextW(draw->hDC, name.c_str(), static_cast<int>(name.size()), &textRect,
+              DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX | DT_END_ELLIPSIS);
+
+    // The glyph is drawn dimmer than the name unless the row is highlighted,
+    // so it reads as a secondary action rather than competing with the label.
+    if (!selected) {
+        SetTextColor(draw->hDC, GetSysColor(COLOR_GRAYTEXT));
+    }
+
+    RECT glyphRect = draw->rcItem;
+    glyphRect.left = glyphRect.right - glyphColumn;
+    DrawTextW(draw->hDC, kDeleteGlyph, -1, &glyphRect,
+              DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
+
+    SetTextColor(draw->hDC, previousColor);
+    SetBkMode(draw->hDC, previousMode);
+}
+
+void App::ClearMenuSelection() {
+    lastMenuItemValid_ = false;
+}
+
+void App::OnMenuSelect(WPARAM wParam, LPARAM lParam) {
+    HMENU menu = reinterpret_cast<HMENU>(lParam);
+    const UINT flags = HIWORD(wParam);
+
+    // Windows sends a final WM_MENUSELECT with flags 0xFFFF and a null menu
+    // when the menu closes — on selection as well as on Escape — and it arrives
+    // *before* TrackPopupMenuEx returns the command. Clearing the captured rect
+    // here would therefore destroy it a moment before the command handler needs
+    // it. So this notification is ignored entirely; ShowMenu clears the state up
+    // front instead, which also stops a rect from one menu leaking into the next.
+    if (flags == 0xFFFF && menu == nullptr) return;
+
+    lastMenuItemValid_ = false;
+
+    // Submenu headings have no command and no row to hit-test.
+    if (!menu || (flags & MF_POPUP)) return;
+
+    // GetMenuItemRect takes a *position*, not a command id — there is no
+    // MF_BYCOMMAND form of it — while WM_MENUSELECT reports the command id.
+    // Passing the id straight through made every call fail, which is what left
+    // the delete glyph drawn but inert.
+    const UINT command = LOWORD(wParam);
+    const int count = GetMenuItemCount(menu);
+    int position = -1;
+
+    for (int i = 0; i < count; ++i) {
+        if (GetMenuItemID(menu, i) == command) {
+            position = i;
+            break;
+        }
+    }
+
+    if (position < 0) return;
+
+    // Screen rectangle of the row under the cursor, captured now because the
+    // menu window is destroyed before TrackPopupMenuEx returns.
+    RECT rect{};
+    if (GetMenuItemRect(menuOwner_, menu, static_cast<UINT>(position), &rect)) {
+        lastMenuItemRect_ = rect;
+        lastMenuItemValid_ = true;
+    }
+}
+
+bool App::LastSelectionHitDeleteGlyph() const {
+    if (!lastMenuItemValid_) return false;
+
+    POINT cursor{};
+    if (!GetCursorPos(&cursor)) return false;
+
+    // Keyboard selection leaves the cursor wherever it happened to be, so a
+    // click outside the row is treated as "not the glyph" — the safe reading,
+    // since the destructive action should never be the accidental one.
+    if (cursor.y < lastMenuItemRect_.top || cursor.y > lastMenuItemRect_.bottom) {
+        return false;
+    }
+
+    const int glyphColumn = MulDiv(kDeleteGlyphColumn, dpi_, 96);
+    return cursor.x >= (lastMenuItemRect_.right - glyphColumn) &&
+           cursor.x <= lastMenuItemRect_.right;
+}
+
 // -------------------------------------------------------------------- window
 
 LRESULT CALLBACK App::WindowProc(HWND window, UINT message, WPARAM wParam,
@@ -225,7 +428,9 @@ LRESULT CALLBACK App::WindowProc(HWND window, UINT message, WPARAM wParam,
         auto* create = reinterpret_cast<CREATESTRUCTW*>(lParam);
         app = static_cast<App*>(create->lpCreateParams);
         SetWindowLongPtrW(window, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(app));
-        if (app) app->window_ = window;
+        // Two windows share this proc — the widget and the hidden menu owner —
+        // so the handles are assigned by Initialise after each call returns,
+        // not here where we cannot tell them apart.
     } else {
         app = reinterpret_cast<App*>(GetWindowLongPtrW(window, GWLP_USERDATA));
     }
@@ -238,16 +443,25 @@ LRESULT App::HandleMessage(HWND window, UINT message, WPARAM wParam, LPARAM lPar
     // The shell broadcasts this when Explorer restarts, which is exactly when an
     // embedded widget has silently lost its parent.
     if (taskbarCreatedMessage_ != 0 && message == taskbarCreatedMessage_) {
-        OnTaskbarCreated();
+        // Broadcast to every top-level window, and in floating mode the widget
+        // is top-level too — so without this guard it runs twice, and the
+        // second pass leaves trayIconAdded_ false, orphaning the tray icon on
+        // exit. The owner is always top-level, so it is the reliable listener;
+        // an embedded widget is a WS_CHILD and gets no broadcasts at all.
+        if (window == menuOwner_) OnTaskbarCreated();
         return 0;
     }
 
     switch (message) {
         case WM_PAINT:
+            // The owner is never visible, so it should never be painted — and
+            // returning without validating its update region would spin.
+            if (window != window_) break;
             OnPaint();
             return 0;
 
         case WM_ERASEBKGND:
+            if (window != window_) break;
             // Claimed so the system does not paint over the taskbar behind us,
             // which would flicker once a second.
             return 1;
@@ -272,14 +486,17 @@ LRESULT App::HandleMessage(HWND window, UINT message, WPARAM wParam, LPARAM lPar
             return 0;
 
         case WM_LBUTTONDOWN:
+            if (window != window_) break;
             if (OnDragButtonDown()) return 0;
             return 0;
 
         case WM_MOUSEMOVE:
+            if (window != window_) break;
             if (OnDragMouseMove()) return 0;
             return 0;
 
         case WM_SETCURSOR:
+            if (window != window_) break;
             // The only visible sign that move mode is armed.
             if (moveMode_ || dragging_) {
                 SetCursor(LoadCursorW(nullptr,
@@ -289,6 +506,7 @@ LRESULT App::HandleMessage(HWND window, UINT message, WPARAM wParam, LPARAM lPar
             break;
 
         case WM_CAPTURECHANGED:
+            if (window != window_) break;
             // Something took the mouse away mid-drag — a shell menu, a lock
             // screen. Commit where it currently sits rather than snapping back.
             // OnDragButtonUp clears the flags itself, so it must be called
@@ -298,6 +516,10 @@ LRESULT App::HandleMessage(HWND window, UINT message, WPARAM wParam, LPARAM lPar
 
         case WM_RBUTTONUP:
         case WM_LBUTTONUP: {
+            // The owner is the foreground window while a menu is up; letting a
+            // button-up there reach OnRightClick would reopen the menu.
+            if (window != window_) break;
+
             // A release that ends a drag must not also open the menu.
             if (OnDragButtonUp()) return 0;
 
@@ -342,14 +564,32 @@ LRESULT App::HandleMessage(HWND window, UINT message, WPARAM wParam, LPARAM lPar
             return 0;
 
         case WM_SETTINGCHANGE:
-            // Covers a theme switch, which changes the text colour we read from
-            // COLOR_BTNTEXT.
-            InvalidateRect(window, nullptr, FALSE);
+            // Covers a theme switch, which changes the colour the readout is
+            // drawn in. Broadcast to top-level windows only, so once the widget
+            // is embedded this arrives at the menu owner — repaint the widget,
+            // not whichever window happened to be notified.
+            if (window_) InvalidateRect(window_, nullptr, FALSE);
+            return 0;
+
+        case WM_MEASUREITEM:
+            OnMeasureProfileItem(reinterpret_cast<MEASUREITEMSTRUCT*>(lParam));
+            return TRUE;
+
+        case WM_DRAWITEM:
+            OnDrawProfileItem(reinterpret_cast<DRAWITEMSTRUCT*>(lParam));
+            return TRUE;
+
+        case WM_MENUSELECT:
+            OnMenuSelect(wParam, lParam);
             return 0;
 
         case WM_DESTROY:
-            KillTimer(window, kTaskbarPollTimerId);
-            PostQuitMessage(0);
+            // The hidden menu owner shares this proc; only the widget going
+            // away should end the message loop.
+            if (window == window_) {
+                KillTimer(window, kTaskbarPollTimerId);
+                PostQuitMessage(0);
+            }
             return 0;
 
         default:
