@@ -19,7 +19,6 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance,
                       _In_ LPWSTR commandLine,
                       _In_ int showCommand) {
     (void)previousInstance;
-    (void)commandLine;
     (void)showCommand;
 
     pinger::ScopedHandle single(CreateMutexW(nullptr, TRUE, kMutexName));
@@ -34,10 +33,23 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance,
     const HRESULT com = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
     const bool comInitialised = SUCCEEDED(com);
 
-    // If the app was registered to start with Windows and has since been moved,
-    // the stored path points at nothing. Fix it now rather than let the user
+    // If the app was registered to run at startup and has since been moved, the
+    // stored path points at nothing. Fix it now rather than let the user
     // discover it after their next reboot.
     pinger::autostart::RepairPathIfNeeded();
+
+    // Honour --delay=<seconds>, which the startup entry adds when the user picks
+    // a delay. Sleeping here rather than after Initialise is the entire point:
+    // what costs anything at boot is creating windows, embedding into the
+    // taskbar, allocating GDI objects, resolving DNS and sending the first
+    // packets — none of which have happened yet.
+    //
+    // Only when actually launched at startup, never when run by hand: the flag
+    // is on the registered command line, not something a person types.
+    const int delaySeconds = pinger::autostart::DelayFromCommandLine(commandLine);
+    if (delaySeconds > 0) {
+        Sleep(static_cast<DWORD>(delaySeconds) * 1000);
+    }
 
     int exitCode = 1;
     {

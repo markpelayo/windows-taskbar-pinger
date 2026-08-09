@@ -27,7 +27,9 @@
 #define IDM_MOVE_WIDGET        40014
 #define IDM_RESET_POSITION     40015
 #define IDM_TOGGLE_FILL        40016
-#define IDM_TOGGLE_AUTOSTART   40017
+#define IDM_AUTOSTART_OFF      40017
+#define IDM_AUTOSTART_NOW      40018
+
 
 #define IDM_INTERVAL_FIRST     41000   // + index into IntervalChoices
 #define IDM_INTERVAL_LAST      41099
@@ -65,3 +67,6 @@
 // reserved so these ids are never handed to something else.
 #define IDM_DEL_PROFILE_FIRST  41900
 #define IDM_DEL_PROFILE_LAST   41999
+
+#define IDM_AUTOSTART_DELAY_FIRST 42100   // + index into autostart::DelayChoices
+#define IDM_AUTOSTART_DELAY_LAST  42199

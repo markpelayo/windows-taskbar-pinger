@@ -89,7 +89,7 @@ precisely so that cloning and building needs nothing but a compiler.
 
 ## Status
 
-**v1.3.0. Working well on Windows 11** — daily use, left running, no known outstanding issues.
+**v1.4.0. Working well on Windows 11** — daily use, left running, no known outstanding issues.
 
 Everything in the menu reference below does what it says: the grid, the latency readout, multiple
 monitors, profiles, the taskbar embedding, surviving an Explorer restart, and starting with Windows.
@@ -138,11 +138,21 @@ cmake --build build --config Release
 
 ### Start it at login
 
-Right-click the grid and tick **Run at startup**.
+Right-click the grid, open **Run at startup**, and choose **Default** — or a delay.
 
 That writes a value under `HKEY_CURRENT_USER\...\CurrentVersion\Run`, which needs no administrator
 rights and shows up in Task Manager's **Startup** tab, so it can be turned off from there too. Move
 the folder later and the app corrects the stored path the next time it runs.
+
+**About the delay.** Signing in to Windows is the busiest moment your disk and network will have all
+day, and a ping widget has no business competing for it. Picking a delay of 5 to 60 seconds makes
+the app wait that long before creating any window, touching the taskbar, resolving DNS or sending a
+packet.
+
+Be clear about what that does and does not do: Windows still *launches* the process at sign-in — a
+Run entry cannot ask it not to. What the delay defers is everything the app actually costs. Truly
+delaying the launch would need a Task Scheduler entry, which is a great deal more machinery than
+this earns. In practice the deferral is where nearly all the benefit is.
 
 If a policy on your machine locks that key, the app says so and you can fall back to the manual
 route: press <kbd>Win</kbd>+<kbd>R</kbd>, enter `shell:startup`, and put a shortcut to `Pinger.exe`
@@ -203,7 +213,7 @@ Right-click any grid:
 | **Restore monitor defaults** | Reset this grid to the factory settings |
 | **Duplicate this monitor** | Add another grid with a copy of these settings |
 | **Remove this monitor** | Delete just this grid (disabled when one is left) |
-| **Run at startup** | Toggle. Adds or removes an `HKEY_CURRENT_USER` Run entry — no admin rights, and visible in Task Manager's Startup tab |
+| **Run at startup ▸** | **Off**, **Default**, or a delay of 5–60 seconds. Adds or removes an `HKEY_CURRENT_USER` Run entry — no admin rights, and visible in Task Manager's Startup tab. The parent row shows the current setting |
 | **Quit Pinger** | |
 
 Every setting persists across launches, per monitor, in `%APPDATA%\Pinger\settings.ini`.

@@ -669,9 +669,54 @@ HMENU MonitorController::BuildMenu(std::vector<HMENU>* ownedSubmenus) {
 
     // App-wide rather than per-monitor, like Quit — which is why it sits down
     // here with it rather than up among the grid's own settings.
-    AppendItem(menu,
-               MF_STRING | (autostart::IsEnabled() ? MF_CHECKED : MF_UNCHECKED),
-               IDM_TOGGLE_AUTOSTART, L"Run at startup");
+    {
+        const autostart::Config startup = autostart::Current();
+
+        HMENU startupMenu = CreatePopupMenu();
+        ownedSubmenus->push_back(startupMenu);
+
+        AppendItem(startupMenu,
+                   MF_STRING | (startup.enabled ? MF_UNCHECKED : MF_CHECKED),
+                   IDM_AUTOSTART_OFF, L"Off");
+
+        AppendItem(startupMenu,
+                   MF_STRING | ((startup.enabled && startup.delaySeconds == 0)
+                                    ? MF_CHECKED
+                                    : MF_UNCHECKED),
+                   IDM_AUTOSTART_NOW, L"Default");
+
+        AppendSeparator(startupMenu);
+
+        // A disabled caption rather than a nested submenu: the delays are the
+        // rest of this menu, so burying them one level deeper would add a step
+        // without adding structure.
+        AppendItem(startupMenu, MF_STRING | MF_GRAYED, 0, L"Delay for:");
+
+        int delayCount = 0;
+        const int* delays = autostart::DelayChoices(&delayCount);
+
+        for (int i = 0; i < delayCount; ++i) {
+            wchar_t label[32];
+            swprintf(label, 32, L"%d seconds", delays[i]);
+
+            const bool selected = startup.enabled && startup.delaySeconds == delays[i];
+            AppendItem(startupMenu, MF_STRING | (selected ? MF_CHECKED : MF_UNCHECKED),
+                       IDM_AUTOSTART_DELAY_FIRST + i, label);
+        }
+
+        // The parent row states the current setting, so the answer to "does this
+        // start with Windows, and when" needs no travel into the submenu.
+        wchar_t title[64];
+        if (!startup.enabled) {
+            wcscpy_s(title, L"Run at startup: off");
+        } else if (startup.delaySeconds == 0) {
+            wcscpy_s(title, L"Run at startup: on");
+        } else {
+            swprintf(title, 64, L"Run at startup: after %d s", startup.delaySeconds);
+        }
+
+        AppendMenuW(menu, MF_POPUP, reinterpret_cast<UINT_PTR>(startupMenu), title);
+    }
 
     AppendSeparator(menu);
     AppendItem(menu, MF_STRING, IDM_QUIT, L"Quit Pinger");
@@ -775,6 +820,23 @@ void MonitorController::HandleCommand(int command) {
                 s.SetColorFor(isSuccess ? ColorSlot::Success : ColorSlot::Failure, color);
                 PersistSettings();
                 Invalidate();
+            }
+        }
+        return;
+    }
+
+    if (command >= IDM_AUTOSTART_DELAY_FIRST && command <= IDM_AUTOSTART_DELAY_LAST) {
+        int delayCount = 0;
+        const int* delays = autostart::DelayChoices(&delayCount);
+        const int index = command - IDM_AUTOSTART_DELAY_FIRST;
+
+        if (index >= 0 && index < delayCount) {
+            if (!autostart::SetEnabled(true, delays[index])) {
+                MessageBoxW(owner,
+                            L"Windows would not let the startup entry be changed.\n\n"
+                            L"This usually means a policy on this machine controls "
+                            L"which apps may start automatically.",
+                            L"Run at startup", MB_OK | MB_ICONWARNING);
             }
         }
         return;
@@ -1018,9 +1080,10 @@ void MonitorController::HandleCommand(int command) {
             if (app_) app_->RemoveMonitor(this);
             break;
 
-        case IDM_TOGGLE_AUTOSTART: {
-            const bool enable = !autostart::IsEnabled();
-            if (!autostart::SetEnabled(enable)) {
+        case IDM_AUTOSTART_OFF:
+        case IDM_AUTOSTART_NOW: {
+            const bool enable = (command == IDM_AUTOSTART_NOW);
+            if (!autostart::SetEnabled(enable, 0)) {
                 // Realistically this only fails when group policy locks the Run
                 // key, which is worth saying rather than leaving the checkmark
                 // mysteriously refusing to move.

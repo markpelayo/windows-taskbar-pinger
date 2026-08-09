@@ -9,6 +9,34 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 Nothing yet.
 
+## [1.4.0] — 2026-08-09
+
+### Added
+
+- **Run at startup can now be delayed.** The toggle becomes a submenu offering **Off**, **Default**,
+  and delays of 5, 10, 15, 20, 30 or 60 seconds. The parent row states the current setting, so the
+  answer to "does this start with Windows, and when" needs no travel into the submenu.
+
+  Signing in is the busiest moment a machine has, and a ping widget has no business competing with
+  the shell for disk and network during it. A delay makes the app wait before creating any window,
+  embedding into the taskbar, allocating GDI objects, resolving DNS or sending a packet.
+
+  **What it does not do is stop Windows launching the process** — a Run entry cannot ask for that.
+  What is deferred is everything the app actually costs, which is where nearly all of the benefit
+  is. Genuinely delaying the launch would need a Task Scheduler entry with a delayed trigger: a COM
+  API, an XML task definition and a much larger surface, to save a few megabytes of working set for
+  a few seconds. The note in `src/autostart.h` records that trade in case it ever looks worth
+  making.
+
+  The delay travels as `--delay=<seconds>` on the registered command line, so it survives the
+  path repair that runs when the app has been moved, and Task Manager's Startup tab shows it plainly
+  rather than hiding it in a settings file.
+
+### Changed
+
+- Turning startup off is now an explicit **Off** in that submenu rather than unticking the parent —
+  a submenu parent cannot be clicked, so the state needed somewhere to live.
+
 ## [1.3.0] — 2026-08-09
 
 The grid reads differently. Nothing about the measurements changed — same samples, same rolling
@@ -414,7 +442,8 @@ These are deliberate differences, not omissions:
 - **Keyboard shortcuts.** The macOS menu had ⌘L, ⌘D, ⌘S and friends. Context menus opened by
   right-click have no equivalent accelerator context.
 
-[Unreleased]: https://github.com/markpelayo/windows-taskbar-pinger/compare/v1.3.0...HEAD
+[Unreleased]: https://github.com/markpelayo/windows-taskbar-pinger/compare/v1.4.0...HEAD
+[1.4.0]: https://github.com/markpelayo/windows-taskbar-pinger/releases/tag/v1.4.0
 [1.3.0]: https://github.com/markpelayo/windows-taskbar-pinger/releases/tag/v1.3.0
 [1.2.2]: https://github.com/markpelayo/windows-taskbar-pinger/releases/tag/v1.2.2
 [1.2.1]: https://github.com/markpelayo/windows-taskbar-pinger/releases/tag/v1.2.1
@@ -422,6 +451,7 @@ These are deliberate differences, not omissions:
 [1.1.1]: https://github.com/markpelayo/windows-taskbar-pinger/releases/tag/v1.1.1
 [1.1.0]: https://github.com/markpelayo/windows-taskbar-pinger/releases/tag/v1.1.0
 [1.0.5]: https://github.com/markpelayo/windows-taskbar-pinger/releases/tag/v1.0.5
+[1.4.0]: https://github.com/markpelayo/windows-taskbar-pinger/releases/tag/v1.4.0
 [1.3.0]: https://github.com/markpelayo/windows-taskbar-pinger/releases/tag/v1.3.0
 [1.2.2]: https://github.com/markpelayo/windows-taskbar-pinger/releases/tag/v1.2.2
 [1.2.1]: https://github.com/markpelayo/windows-taskbar-pinger/releases/tag/v1.2.1

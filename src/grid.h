@@ -1,7 +1,11 @@
 // grid.h — drawing the rolling cell grid.
 //
-// The whole point of the app is here: one cell per ping, filling bottom-left
-// upward then column by column, rolling over once full.
+// The whole point of the app is here: one cell per ping.
+//
+// The newest sample is always the first cell, at the top left; older ones sit
+// further along and the oldest falls off the far end. Two fill orders share
+// those endpoints — horizontally across rows (the default) or vertically down
+// columns — differing only in the path between them.
 //
 // Everything in this file exists to make that redraw cost nothing. The widget
 // repaints once a second and is meant to run for weeks, so:
