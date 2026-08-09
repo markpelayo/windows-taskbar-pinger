@@ -32,6 +32,9 @@ struct MonitorSettings {
     int          gap        = defaults::kGap;
     double       interval   = defaults::kInterval;
     bool         showLatency = defaults::kShowLatency;
+    // Point size of the latency readout. Per-monitor, like every other visual
+    // setting, so two grids side by side can be weighted differently.
+    int          textSize   = defaults::kTextSize;
 
     int CellCount() const { return rows * columns; }
 

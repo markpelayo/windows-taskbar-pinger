@@ -7,6 +7,26 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [1.0.3] — 2026-08-09
+
+### Added
+
+- **Latency text size is configurable**, from the new **Latency text size** submenu directly beneath
+  **Show average latency**. Offers 8 to 16 pt, and is greyed out when the readout is hidden, since
+  there is nothing for it to size.
+
+  Per-monitor rather than app-wide, like every other visual setting, so two grids side by side can
+  be weighted differently — and because a global setting reached from a per-monitor menu would be
+  misleading about what it affects.
+
+### Changed
+
+- **The readout is 10 pt by default, down from 12.** 12 pt was noticeably oversized against a 6 px
+  grid in a taskbar. The clock beside it is 9 pt; one point above that reads as lightly emphasised
+  without dominating. Anyone who preferred the larger size can set it back in the new submenu.
+
 ### Internal
 
 - Dependabot now watches the GitHub Actions used by the build workflow and opens a grouped weekly
@@ -138,7 +158,8 @@ These are deliberate differences, not omissions:
 - **Keyboard shortcuts.** The macOS menu had ⌘L, ⌘D, ⌘S and friends. Context menus opened by
   right-click have no equivalent accelerator context.
 
-[Unreleased]: https://github.com/markpelayo/windows-taskbar-pinger/compare/v1.0.2...HEAD
+[Unreleased]: https://github.com/markpelayo/windows-taskbar-pinger/compare/v1.0.3...HEAD
+[1.0.3]: https://github.com/markpelayo/windows-taskbar-pinger/releases/tag/v1.0.3
 [1.0.2]: https://github.com/markpelayo/windows-taskbar-pinger/releases/tag/v1.0.2
 [1.0.1]: https://github.com/markpelayo/windows-taskbar-pinger/releases/tag/v1.0.1
 [1.0.0]: https://github.com/markpelayo/windows-taskbar-pinger/releases/tag/v1.0.0

@@ -73,7 +73,7 @@ precisely so that cloning and building needs nothing but a compiler.
 
 ## Status
 
-**v1.0.2.** It builds and runs on Windows 11, and the core — grid, pinging, menu, taskbar embedding
+**v1.0.3.** It builds and runs on Windows 11, and the core — grid, pinging, menu, taskbar embedding
 — works.
 
 Testing beyond that is thin. It has been exercised on Windows 11 at 100% scaling with a
@@ -147,6 +147,7 @@ Right-click any grid:
 | **Set IP Address or Hostname…** | Any IP or hostname; saved across launches (default `8.8.8.8`) |
 | **Ping frequency ▸** | 0.5 s–60 s presets, or **Custom…** for anything from 0.25 s to an hour |
 | **Show average latency** | Toggle: prints the average round trip next to the grid |
+| **Latency text size ▸** | 8–16 pt (default 10); greyed out when the readout is off |
 | **Success color ▸** | 10 presets plus **Custom…** (system color picker); default blue |
 | **Failure color ▸** | Same, default red |
 | **Rows ▸** | 2–8 (default 4) |
