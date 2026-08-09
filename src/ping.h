@@ -24,6 +24,7 @@
 
 #include <windows.h>
 
+#include <memory>
 #include <string>
 
 #include "raii.h"
@@ -39,13 +40,35 @@ struct PingResult {
     // result from a current one after the host or interval changes.
     unsigned sequence = 0;
     // Identifies which session produced this, so results from a session we have
-    // already torn down are discarded rather than drawn.
+    // already torn down are discarded rather than drawn. Drawn from a
+    // process-wide counter, so an id is never ambiguous between two monitors.
     unsigned session = 0;
 };
 
 // Posted to the owning window whenever a packet settles.
 // wParam = monitor index, lParam = new PingResult* (receiver takes ownership).
 inline constexpr UINT WM_PINGER_RESULT = WM_APP + 1;
+
+// Everything the worker thread touches.
+//
+// Held by shared_ptr and co-owned by the thread, which is what makes the
+// wedged-worker case safe. If Stop() ever gives up waiting, the UI side simply
+// drops its reference: the worker keeps the block — and its stop event — alive
+// until it finally returns, and can never dereference freed memory.
+//
+// Without this the worker would be reading `window_` and interlocking on
+// `monitorIndex_` inside a PingSession its owner had already destroyed, which
+// is heap corruption rather than merely a stale read.
+struct PingShared {
+    HWND          window = nullptr;
+    // Written by the UI thread when monitors are renumbered, read by the worker
+    // on every packet, hence interlocked rather than a plain unsigned.
+    volatile LONG monitorIndex = 0;
+    ScopedHandle  stop;
+    std::wstring  host;
+    double        interval = 1.0;
+    unsigned      session = 0;
+};
 
 class PingSession {
 public:
@@ -61,15 +84,13 @@ public:
     // this is also how "Ping now" forces an immediate packet.
     void Start(const std::wstring& host, double interval);
 
-    // Signals the worker to finish and waits for it. Called on teardown, and
-    // before any restart, so a monitor never has two threads pinging at once.
+    // Signals the worker to finish and waits briefly for it. Called on teardown
+    // and before any restart, so a monitor never has two threads pinging at
+    // once. Never blocks for long: see the definition.
     void Stop();
 
     // Identifier of the session currently running, for stale-result filtering.
-    // Drawn from a process-wide counter, so an id is never ambiguous between
-    // two monitors — a per-session counter starting at zero in every session
-    // would collide on the first packet of every monitor.
-    unsigned CurrentSession() const { return session_; }
+    unsigned CurrentSession() const { return shared_ ? shared_->session : 0; }
 
     // Monitors are renumbered when one is removed, and the worker echoes this
     // value back as wParam. Without this the surviving workers keep posting
@@ -79,26 +100,13 @@ public:
 
 private:
     static DWORD WINAPI ThreadMain(LPVOID parameter);
-    void Run();
+    static void Run(const std::shared_ptr<PingShared>& shared);
 
     HWND     window_ = nullptr;
-    // Read by the worker thread on every packet and written by the UI thread on
-    // a renumber, so it is interlocked rather than a plain unsigned.
-    volatile LONG monitorIndex_ = 0;
+    unsigned monitorIndex_ = 0;
 
-    ScopedHandle thread_;
-    ScopedHandle stopEvent_;
-
-    // Set when Stop() gave up waiting for a wedged worker. That worker still
-    // holds `this` and its own copy of the stop event, so this object must
-    // never start a second thread, and must not be reused.
-    bool abandoned_ = false;
-
-    // Written only between Stop() and Start(), read by the worker thread it
-    // belongs to, so no lock is needed on these.
-    std::wstring host_;
-    double       interval_ = 1.0;
-    unsigned     session_ = 0;
+    std::shared_ptr<PingShared> shared_;
+    ScopedHandle                thread_;
 };
 
 }  // namespace pinger

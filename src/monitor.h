@@ -40,6 +40,12 @@ public:
     // the wParam of every result it posts.
     void SetIndex(unsigned index);
 
+    // Points this monitor at a newly created host window and restarts its ping
+    // session against it. Needed when Explorer restarts: the widget is a child
+    // of the taskbar, so the shell destroys it along with Shell_TrayWnd and a
+    // replacement has to be built.
+    void RebindWindow(HWND window);
+
     // Total width this widget wants, including the latency text when shown.
     int DesiredWidth() const;
 
@@ -47,8 +53,9 @@ public:
     void Layout(int dpi, int availableThickness);
 
     // Paints into the given DC; called from the host window's WM_PAINT.
-    // `slot` is this monitor's share of the client area.
-    void Paint(HDC dc, const RECT& slot);
+    // `slot` is this monitor's share of the client area. `textColor` comes from
+    // the app, which caches it rather than re-reading the theme every frame.
+    void Paint(HDC dc, const RECT& slot, COLORREF textColor);
 
     // Handles one settled packet. Applies the opening-packet hold-back rule
     // before anything is drawn.
@@ -107,6 +114,12 @@ private:
     // "5 ms" becoming "6 ms" changes nothing, "9 ms" becoming "10 ms" does.
     int    latencyWidth_ = 0;
     size_t latencyLength_ = 0;
+
+    // How many consecutive samples have wanted a *narrower* readout. The width
+    // grows immediately but only shrinks once this many agree, so a value
+    // sitting on a digit boundary cannot make the widget resize every second.
+    int              shrinkCandidates_ = 0;
+    static constexpr int kShrinkHoldSamples = 10;
 
     // The readout's font, rebuilt only when its point size or the DPI changes.
     ScopedFont font_;

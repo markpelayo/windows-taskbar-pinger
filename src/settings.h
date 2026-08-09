@@ -12,8 +12,8 @@
 
 #include <windows.h>
 
-#include <map>
 #include <string>
+#include <utility>   // std::pair, used by SettingsDocument
 #include <vector>
 
 #include "defaults.h"

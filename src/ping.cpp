@@ -10,7 +10,6 @@
 
 #include <algorithm>
 #include <cstring>
-#include <vector>
 
 #include "defaults.h"
 
@@ -41,12 +40,6 @@ public:
     HANDLE get() const { return handle_; }
     explicit operator bool() const { return handle_ != nullptr; }
 
-    HANDLE release() {
-        HANDLE handle = handle_;
-        handle_ = nullptr;
-        return handle;
-    }
-
     void reset(HANDLE handle = nullptr) {
         if (handle_ && handle_ != handle) IcmpCloseHandle(handle_);
         handle_ = (handle == INVALID_HANDLE_VALUE) ? nullptr : handle;
@@ -58,6 +51,10 @@ private:
 
 // Winsock is initialised once for the process. getaddrinfo needs it; the ICMP
 // APIs do not, but resolution and pinging always travel together here.
+//
+// Note this is first constructed on a *worker* thread, so the thread-safe
+// static initialisation guard is doing real work — do not build with
+// /Zc:threadSafeInit-.
 struct WinsockScope {
     WinsockScope() {
         WSADATA data{};
@@ -109,14 +106,15 @@ bool ResolveIPv4(const std::wstring& host, IPAddr* out) {
 
 // Milliseconds we are willing to wait for a reply.
 //
-// Capped at the interval so the cadence never slips: a packet that has not
-// answered by the time the next one is due is a lost packet, which is the same
-// rule `ping -O` applies on macOS. Floored at 300 ms so very fast intervals
-// still allow a real reply, and ceilinged at 4 s so a long interval does not
-// leave the grid frozen.
+// Never longer than the interval itself: a packet that has not answered by the
+// time the next one is due is a lost packet, which is the same rule `ping -O`
+// applies on macOS, and it keeps the cadence from slipping. Floored at 100 ms so
+// even the fastest interval allows a real LAN reply, and capped at 1500 ms so a
+// long interval cannot leave Stop() waiting on a single packet — see Stop().
 DWORD TimeoutFor(double interval) {
     const double milliseconds = interval * 1000.0;
-    return static_cast<DWORD>(std::clamp(milliseconds, 300.0, 4000.0));
+    const double capped = std::min(milliseconds, 1500.0);
+    return static_cast<DWORD>(std::max(capped, 100.0));
 }
 
 }  // namespace
@@ -124,85 +122,89 @@ DWORD TimeoutFor(double interval) {
 // ------------------------------------------------------------------ lifetime
 
 PingSession::PingSession(HWND window, unsigned monitorIndex)
-    : window_(window), monitorIndex_(static_cast<LONG>(monitorIndex)) {}
+    : window_(window), monitorIndex_(monitorIndex) {}
 
 PingSession::~PingSession() { Stop(); }
 
 void PingSession::SetMonitorIndex(unsigned index) {
-    InterlockedExchange(&monitorIndex_, static_cast<LONG>(index));
+    monitorIndex_ = index;
+    if (shared_) InterlockedExchange(&shared_->monitorIndex, static_cast<LONG>(index));
 }
 
 void PingSession::Start(const std::wstring& host, double interval) {
     Stop();
 
-    // If Stop() gave up on a wedged worker, that worker is still reading the
-    // fields below and still holds `this`. Starting a second thread would race
-    // on all of them, so refuse. This session is finished; the monitor keeps
-    // showing its last grid rather than corrupting memory.
-    if (abandoned_) return;
-
-    host_ = host;
-    interval_ = std::clamp(interval, defaults::kMinInterval, defaults::kMaxInterval);
-    session_ = static_cast<unsigned>(InterlockedIncrement(&g_nextSessionId));
+    auto shared = std::make_shared<PingShared>();
+    shared->window = window_;
+    shared->monitorIndex = static_cast<LONG>(monitorIndex_);
+    shared->host = host;
+    shared->interval = std::clamp(interval, defaults::kMinInterval, defaults::kMaxInterval);
+    shared->session = static_cast<unsigned>(InterlockedIncrement(&g_nextSessionId));
 
     // Manual reset: once we ask the worker to stop it must stay stopped.
-    stopEvent_.reset(CreateEventW(nullptr, TRUE, FALSE, nullptr));
-    if (!stopEvent_) return;
+    shared->stop.reset(CreateEventW(nullptr, TRUE, FALSE, nullptr));
+    if (!shared->stop) return;
 
-    // 64 KB stack: this thread calls two Win32 functions in a loop and never
-    // recurses. The default 1 MB reservation across eight monitors would be
-    // 8 MB of address space for no reason.
-    thread_.reset(CreateThread(nullptr, 64 * 1024, &PingSession::ThreadMain, this,
+    // The thread gets its own shared_ptr, handed over as a raw heap pointer and
+    // adopted in ThreadMain. That co-ownership is what makes an abandoned
+    // worker safe.
+    auto* parameter = new std::shared_ptr<PingShared>(shared);
+
+    // 64 KB stack: this thread calls a handful of Win32 functions in a loop and
+    // never recurses. STACK_SIZE_PARAM_IS_A_RESERVATION matters — without it
+    // the size would be the initial commit and the reservation would silently
+    // be the 1 MB from the PE header.
+    thread_.reset(CreateThread(nullptr, 64 * 1024, &PingSession::ThreadMain, parameter,
                                STACK_SIZE_PARAM_IS_A_RESERVATION, nullptr));
+
+    if (!thread_) {
+        delete parameter;
+        return;
+    }
+
+    shared_ = std::move(shared);
 }
 
 void PingSession::Stop() {
-    if (abandoned_) return;   // nothing left here that is safe to touch
-
-    if (stopEvent_) SetEvent(stopEvent_.get());
+    if (shared_ && shared_->stop) SetEvent(shared_->stop.get());
 
     if (thread_) {
-        // The worker only ever waits on stopEvent_ with a bounded timeout, so
-        // this normally returns at once. The generous limit is a backstop
-        // against a wedged IcmpSendEcho rather than an expected wait.
-        const DWORD outcome = WaitForSingleObject(thread_.get(), 10000);
-
-        if (outcome != WAIT_OBJECT_0) {
-            // The worker is still running and still holds `this` and the stop
-            // event. Closing either now would hand it a recycled handle, and
-            // letting the destructor run would free state it is about to read.
-            //
-            // So both handles are deliberately leaked and the session is marked
-            // abandoned, which stops Start() from ever launching a second
-            // worker on this object. One wedged thread costs 64 KB of stack; a
-            // use-after-free costs the process.
-            //
-            // (release() must not be relied on to keep `thread_` set — it nulls
-            // the member by design. Hence the explicit flag.)
-            abandoned_ = true;
-            (void)thread_.release();
-            (void)stopEvent_.release();
-            return;
-        }
-
+        // The worker checks the stop event between packets and its ICMP wait is
+        // capped at 1.5 s by TimeoutFor, so this normally returns at once and
+        // never blocks the UI thread for long.
+        //
+        // If it does time out we simply walk away. The worker co-owns the shared
+        // block, so it keeps its own stop event alive and exits on the next
+        // iteration into memory that is still valid — which is why there is no
+        // longer an "abandoned" flag disabling the session forever.
+        //
+        // Closing the thread handle here is safe even while the thread runs: it
+        // only drops our reference, and nothing the worker touches lives in this
+        // object any more.
+        WaitForSingleObject(thread_.get(), 3000);
         thread_.reset();
     }
 
-    stopEvent_.reset();
+    shared_.reset();
 }
 
 DWORD WINAPI PingSession::ThreadMain(LPVOID parameter) {
-    static_cast<PingSession*>(parameter)->Run();
+    // Adopt the shared_ptr the caller heap-allocated for us, so the block stays
+    // alive for exactly as long as this function runs.
+    std::unique_ptr<std::shared_ptr<PingShared>> owned(
+        static_cast<std::shared_ptr<PingShared>*>(parameter));
+
+    if (owned && *owned) Run(*owned);
     return 0;
 }
 
 // ---------------------------------------------------------------- the worker
 
-void PingSession::Run() {
-    const std::wstring host = host_;
-    const double interval = interval_;
-    const unsigned session = session_;
-    const HANDLE stop = stopEvent_.get();
+void PingSession::Run(const std::shared_ptr<PingShared>& shared) {
+    const HWND window = shared->window;
+    const HANDLE stop = shared->stop.get();
+    const double interval = shared->interval;
+    const unsigned session = shared->session;
     const DWORD timeout = TimeoutFor(interval);
     const DWORD intervalMs = static_cast<DWORD>(interval * 1000.0);
 
@@ -212,15 +214,16 @@ void PingSession::Run() {
     // Resolved once per session, as `ping` does. A host that moves is picked up
     // the next time the session restarts, which the menu does on any change.
     IPAddr address = 0;
-    const bool resolved = ResolveIPv4(host, &address);
+    const bool resolved = ResolveIPv4(shared->host, &address);
 
     // 32 bytes out, matching Windows ping.exe so latencies are comparable.
     char payload[defaults::kPayloadBytes];
     memset(payload, 'a', sizeof(payload));
 
-    // The reply buffer must hold ICMP_ECHO_REPLY plus the echoed payload, and
-    // iphlpapi wants headroom for an optional IO_STATUS_BLOCK on top.
-    std::vector<char> reply(sizeof(ICMP_ECHO_REPLY) + sizeof(payload) + 8);
+    // The reply buffer must hold ICMP_ECHO_REPLY plus the echoed payload, with
+    // headroom for an optional IO_STATUS_BLOCK on top. On the stack rather than
+    // heap: it is under 100 bytes and this thread has 64 KB.
+    char reply[sizeof(ICMP_ECHO_REPLY) + defaults::kPayloadBytes + 8];
 
     unsigned sequence = 0;
 
@@ -241,11 +244,11 @@ void PingSession::Run() {
             const DWORD count =
                 IcmpSendEcho(icmp.get(), address, payload,
                              static_cast<WORD>(sizeof(payload)), nullptr,
-                             reply.data(), static_cast<DWORD>(reply.size()), timeout);
+                             reply, static_cast<DWORD>(sizeof(reply)), timeout);
 
             if (count > 0) {
                 const ICMP_ECHO_REPLY* echo =
-                    reinterpret_cast<const ICMP_ECHO_REPLY*>(reply.data());
+                    reinterpret_cast<const ICMP_ECHO_REPLY*>(reply);
 
                 if (echo->Status == IP_SUCCESS) {
                     result.reachable = true;
@@ -263,21 +266,26 @@ void PingSession::Run() {
 
         if (WaitForSingleObject(stop, 0) == WAIT_OBJECT_0) return;
 
-        // The window owns the result from here; it deletes it after handling.
-        // PostMessage rather than SendMessage so a busy UI thread never blocks
-        // the ping cadence.
         // Read the index fresh each time: a monitor removed while we were
         // sleeping renumbers the survivors, and a cached copy would route this
         // result to the wrong grid.
-        const LONG currentIndex = InterlockedCompareExchange(&monitorIndex_, 0, 0);
+        const LONG currentIndex = InterlockedCompareExchange(&shared->monitorIndex, 0, 0);
 
+        // The window owns the result from here; it deletes it after handling.
+        // PostMessage rather than SendMessage so a busy UI thread never blocks
+        // the ping cadence.
         PingResult* payloadResult = new PingResult(result);
-        if (!PostMessageW(window_, WM_PINGER_RESULT,
-                          static_cast<WPARAM>(currentIndex),
+        if (!PostMessageW(window, WM_PINGER_RESULT, static_cast<WPARAM>(currentIndex),
                           reinterpret_cast<LPARAM>(payloadResult))) {
-            // The window has gone; nothing will free this, so we must.
+            const DWORD error = GetLastError();
             delete payloadResult;
-            return;
+
+            // A full message queue is transient — the UI thread is merely busy,
+            // and the next packet will get through. Only an invalid handle means
+            // the window has genuinely gone, and only then should this thread
+            // retire; treating both alike froze a monitor permanently the first
+            // time the queue filled.
+            if (error == ERROR_INVALID_WINDOW_HANDLE) return;
         }
 
         // Sleep whatever is left of the interval. IcmpSendEcho already consumed

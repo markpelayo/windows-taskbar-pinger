@@ -77,7 +77,7 @@ precisely so that cloning and building needs nothing but a compiler.
 
 ## Status
 
-**v1.0.5.** It builds and runs on Windows 11, and the core — grid, pinging, menu, taskbar embedding
+**v1.1.0.** It builds and runs on Windows 11, and the core — grid, pinging, menu, taskbar embedding
 — works.
 
 Testing beyond that is thin. It has been exercised on Windows 11 at 100% scaling with a
@@ -219,6 +219,20 @@ It was written to be something you can leave running forever:
   `IcmpSendEcho` in `iphlpapi`, which sends an echo request from inside our own process — no
   `fork`/`exec`, no output parsing, no localised console text to scrape, and **no administrator
   rights**, unlike a hand-rolled raw ICMP socket.
+- **Nothing is allocated on a repaint.** Brushes, fonts and the double-buffer bitmap are all cached
+  and rebuilt only when something actually changes — a colour, the DPI, the widget's size. The GDI
+  handle count is flat, which matters because a process is capped at 10,000 of them: leaking one per
+  redraw would kill the app in under three hours.
+- **Nothing is read from the registry or sent to another process on a repaint.** The taskbar's text
+  colour is cached and refreshed on the theme-change broadcast rather than polled, and the tray
+  tooltip — a cross-process call into Explorer — is rate limited rather than rewritten every second
+  for text that is only visible while you hover.
+- **No iostreams.** `<fstream>` and `<sstream>` were the single largest contributor to the binary,
+  dragging in two full sets of locale facets that construct at startup and stay resident, for what
+  amounts to reading and writing one small text file. Replaced with the Win32 file calls.
+- **The taskbar poll uses a coalescable timer,** so Windows can batch its wakeup with other system
+  activity instead of pulling an idle CPU out of sleep twice a second. That is the part that shows
+  up in laptop battery life.
 - **One small thread per monitor,** 64 KB of stack, blocked essentially all of its life. Not one
   thread per packet.
 - **No GDI allocation per frame.** Brushes are cached and rebuilt only when a color actually

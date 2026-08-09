@@ -4,6 +4,8 @@
 
 #include <algorithm>
 
+#include "defaults.h"
+
 namespace pinger {
 
 namespace {
@@ -122,7 +124,9 @@ COLORREF TaskbarTextColor() {
 }
 
 int UsableThickness(const TaskbarInfo& info) {
-    if (!info.valid) return MulDiv(24, 96, 96);
+    // The fallback has to be DPI-scaled too — it was MulDiv(24, 96, 96), which
+    // is just 24 at any scaling.
+    if (!info.valid) return MulDiv(defaults::kMaxBarHeight, DpiForWindow(nullptr), 96);
 
     const bool horizontal =
         info.edge == TaskbarEdge::Top || info.edge == TaskbarEdge::Bottom;

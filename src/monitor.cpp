@@ -71,6 +71,16 @@ void MonitorController::SetIndex(unsigned index) {
     if (session_) session_->SetMonitorIndex(index);
 }
 
+void MonitorController::RebindWindow(HWND window) {
+    window_ = window;
+
+    // The session captured the old handle, so it cannot simply be told the new
+    // one — it is replaced outright. Restart() re-arms the opening-packet rule
+    // as usual, which is correct here: this is a fresh session on a fresh window.
+    session_ = std::make_unique<PingSession>(window_, index_);
+    Restart();
+}
+
 void MonitorController::Restart() {
     // A new session sends its opening packet immediately, and opening packets
     // are routinely lost to route setup — ARP, DNS, a Wi-Fi radio waking up.
@@ -140,6 +150,11 @@ void MonitorController::MeasureLatencyWidth() {
         if (iswdigit(c)) c = L'8';
     }
 
+    // Recorded even when measuring fails below. Otherwise a persistent GDI
+    // failure leaves latencyLength_ stale while the text keeps growing, and the
+    // grow branch in CommitSample would then request a relayout every sample.
+    latencyLength_ = text.size();
+
     ScopedWindowDC screen(nullptr, GetDC(nullptr));
     if (!screen) return;
 
@@ -152,7 +167,6 @@ void MonitorController::MeasureLatencyWidth() {
     }
 
     latencyWidth_ = extent.cx + MulDiv(kLatencyTextPadding, dpi_, 96);
-    latencyLength_ = text.size();
 }
 
 void MonitorController::Layout(int dpi, int availableThickness) {
@@ -163,15 +177,14 @@ void MonitorController::Layout(int dpi, int availableThickness) {
     MeasureLatencyWidth();
 }
 
-void MonitorController::Paint(HDC dc, const RECT& slot) {
+void MonitorController::Paint(HDC dc, const RECT& slot, COLORREF textColor) {
     const std::wstring latency =
         record_.settings.showLatency ? AverageLatencyText() : std::wstring();
 
-    // Not GetSysColor(COLOR_BTNTEXT): that reports the apps theme, which is
-    // black under a default Windows 11 install, and black on the dark taskbar
-    // is unreadable. TaskbarTextColor reads the shell's own theme setting.
-    const COLORREF textColor = TaskbarTextColor();
-
+    // The colour is passed in rather than fetched here. It comes from
+    // TaskbarTextColor, which reads a registry value — fine once, but this runs
+    // once a second per monitor, so the app caches it and refreshes it on the
+    // theme-change broadcast instead.
     renderer_.Paint(dc, slot, record_.settings, metrics_, samples_, latency, textColor,
                     font_.get(), dpi_);
 }
@@ -285,13 +298,34 @@ void MonitorController::CommitSample(const PingResult& result) {
 
     TrimSamples();
 
-    // A reading that has grown or shrunk a digit needs more or less room, so
-    // the widget has to be re-measured and repositioned. Compared by length
-    // rather than value: 5 ms to 6 ms is free, 9 ms to 10 ms is not.
-    if (record_.settings.showLatency && AverageLatencyText().size() != latencyLength_) {
-        if (app_) {
-            app_->Relayout();   // re-measures, resizes and repaints
-            return;
+    // A reading that has grown a digit needs more room, so the widget has to be
+    // re-measured and repositioned. Compared by length rather than value:
+    // 5 ms to 6 ms is free, 9 ms to 10 ms is not.
+    //
+    // Growing is applied at once; shrinking only after the shorter reading has
+    // held for a while. Without that hysteresis an average hovering at 9.5 ms —
+    // an entirely ordinary gateway latency — flips between "9 ms" and "10 ms"
+    // and triggers a full relayout, including a SetWindowPos on a child of the
+    // taskbar, potentially every single second.
+    if (record_.settings.showLatency) {
+        const size_t length = AverageLatencyText().size();
+
+        if (length > latencyLength_) {
+            shrinkCandidates_ = 0;
+            if (app_) {
+                app_->Relayout();   // re-measures, resizes and repaints
+                return;
+            }
+        } else if (length < latencyLength_) {
+            if (++shrinkCandidates_ >= kShrinkHoldSamples) {
+                shrinkCandidates_ = 0;
+                if (app_) {
+                    app_->Relayout();
+                    return;
+                }
+            }
+        } else {
+            shrinkCandidates_ = 0;
         }
     }
 
@@ -636,6 +670,14 @@ void MonitorController::ShowMenu(POINT screenPoint) {
 void MonitorController::HandleCommand(int command) {
     MonitorSettings& s = record_.settings;
 
+    // Dialogs are owned by the app's hidden top-level window for the same
+    // reason menus are. A modal dialog disables its owner, and Windows resolves
+    // a WS_CHILD owner to its top-level ancestor — which here is Shell_TrayWnd,
+    // so passing the widget would disable the entire taskbar for as long as a
+    // prompt was open.
+    HWND owner = app_ ? app_->MenuOwner() : window_;
+    if (!owner) owner = window_;
+
     // Ranged commands first, so the switch below stays readable.
     const auto& intervalChoices = defaults::IntervalChoices();
     if (command >= IDM_INTERVAL_FIRST && command <= IDM_INTERVAL_LAST) {
@@ -724,7 +766,7 @@ void MonitorController::HandleCommand(int command) {
         if (app_ && app_->LastSelectionHitDeleteGlyph()) {
             if (index < profileNames.size()) {
                 const std::wstring& name = profileNames[index];
-                if (Confirm(window_, L"Delete “" + name + L"”?",
+                if (Confirm(owner, L"Delete “" + name + L"”?",
                             L"The saved profile is removed. Monitors currently using "
                             L"those settings keep them — only the profile goes away.")) {
                     profiles::Delete(name);
@@ -751,7 +793,7 @@ void MonitorController::HandleCommand(int command) {
         const size_t index = static_cast<size_t>(command - IDM_SAVE_PROFILE_FIRST);
         if (index < profileNames.size()) {
             const std::wstring& name = profileNames[index];
-            if (Confirm(window_, L"Overwrite “" + name + L"”?",
+            if (Confirm(owner, L"Overwrite “" + name + L"”?",
                         L"Replace that profile with this monitor's current settings?")) {
                 profiles::Save(name, s);
             }
@@ -769,7 +811,7 @@ void MonitorController::HandleCommand(int command) {
             std::wstring entered;
             std::wstring message = L"Enter an IP address or hostname to ping every " +
                                    FormatInterval(s.interval) + L".";
-            if (!PromptForText(window_, L"Ping target", message, s.host, &entered)) break;
+            if (!PromptForText(owner, L"Ping target", message, s.host, &entered)) break;
 
             const std::wstring newHost = entered.empty() ? defaults::kHost : entered;
             if (newHost == s.host) break;
@@ -786,7 +828,7 @@ void MonitorController::HandleCommand(int command) {
             wchar_t current[32];
             swprintf(current, 32, L"%g", s.interval);
 
-            if (!PromptForText(window_, L"Ping frequency",
+            if (!PromptForText(owner, L"Ping frequency",
                                L"Seconds between pings (0.25–3600).", current,
                                &entered)) {
                 break;
@@ -813,6 +855,9 @@ void MonitorController::HandleCommand(int command) {
 
         case IDM_TOGGLE_LATENCY:
             s.showLatency = !s.showLatency;
+            // A count left over from before the readout was hidden would make
+            // the first shrink after re-enabling it fire early.
+            shrinkCandidates_ = 0;
             PersistSettings();
             if (app_) app_->Relayout();
             break;
@@ -831,7 +876,7 @@ void MonitorController::HandleCommand(int command) {
             const ColorSlot slot =
                 command == IDM_SUCCESS_CUSTOM ? ColorSlot::Success : ColorSlot::Failure;
             COLORREF chosen = 0;
-            if (PickColor(window_, s.ColorFor(slot), &chosen)) {
+            if (PickColor(owner, s.ColorFor(slot), &chosen)) {
                 s.SetColorFor(slot, chosen);
                 PersistSettings();
                 Invalidate();
@@ -857,7 +902,7 @@ void MonitorController::HandleCommand(int command) {
 
         case IDM_SAVE_NEW_PROFILE: {
             std::wstring name;
-            if (!PromptForText(window_, L"Save monitor profile",
+            if (!PromptForText(owner, L"Save monitor profile",
                                L"Saves this monitor's host, frequency, colors and "
                                L"grid shape.",
                                s.host, &name)) {
@@ -867,7 +912,7 @@ void MonitorController::HandleCommand(int command) {
 
             MonitorSettings existing;
             if (profiles::Snapshot(name, &existing)) {
-                if (!Confirm(window_, L"Overwrite “" + name + L"”?",
+                if (!Confirm(owner, L"Overwrite “" + name + L"”?",
                              L"A profile with that name already exists. Replace it "
                              L"with the current settings?")) {
                     break;

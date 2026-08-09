@@ -46,7 +46,16 @@ constexpr int kLeftEdgeFallback = 8;
 // the taskbar moves or resizes, so this is a low-frequency poll; two seconds is
 // far below what anyone notices and costs one FindWindow plus one GetWindowRect.
 constexpr UINT kTaskbarPollTimerId = 1;
+// Retries rebuilding the widget after the shell destroyed it. TaskbarCreated
+// normally arrives first and cancels this; the timer exists so that a shell
+// which never returns cannot leave the process running with no window, no tray
+// icon and therefore no way for the user to quit it.
+constexpr UINT kRecoveryTimerId = 2;
+constexpr UINT kRecoveryIntervalMs = 3000;
 constexpr UINT kTaskbarPollIntervalMs = 2000;
+// How much later than that Windows may fire it, so the wakeup can be batched
+// with other system activity rather than waking an idle CPU on its own.
+constexpr ULONG kTaskbarPollToleranceMs = 2000;
 
 }  // namespace
 
@@ -55,10 +64,22 @@ constexpr UINT kTaskbarPollIntervalMs = 2000;
 App::App() = default;
 
 App::~App() {
+    quitting_ = true;
     RemoveTrayIcon();
 
     // Controllers must die before the window they post results to.
     monitors_.clear();
+
+    // Anything a worker posted before it stopped is still in the queue and owns
+    // heap memory nobody will free once the window goes.
+    if (window_) {
+        MSG queued;
+        while (PeekMessageW(&queued, window_, WM_PINGER_RESULT, WM_PINGER_RESULT,
+                            PM_REMOVE)) {
+            delete reinterpret_cast<PingResult*>(queued.lParam);
+        }
+    }
+
     ClearSwatchCache();
 
     if (menuOwner_) {
@@ -92,17 +113,7 @@ bool App::Initialise(HINSTANCE instance) {
         if (GetLastError() != ERROR_CLASS_ALREADY_EXISTS) return false;
     }
 
-    // Created as a popup first, then converted to a child if embedding works.
-    // WS_EX_LAYERED gives us the colour key that lets the taskbar show through;
-    // without it the widget would sit on an opaque rectangle, and GDI cannot
-    // reproduce the Windows 11 acrylic behind it.
-    window_ = CreateWindowExW(WS_EX_TOOLWINDOW | WS_EX_TOPMOST | WS_EX_LAYERED,
-                              kWindowClass, kWindowTitle, WS_POPUP, 0, 0, 100, 24,
-                              nullptr, nullptr, instance, this);
-
-    if (!window_) return false;
-
-    SetLayeredWindowAttributes(window_, kChromaKey, 0, LWA_COLORKEY);
+    if (!CreateWidgetWindow()) return false;
 
     // The hidden top-level window that owns popup menus. Never shown, never
     // sized — it exists solely to be something SetForegroundWindow will accept,
@@ -112,11 +123,21 @@ bool App::Initialise(HINSTANCE instance) {
                                  this);
     if (!menuOwner_) return false;
 
+    // Shown, but at zero size and as a tool window, so it stays out of Alt-Tab
+    // and off the taskbar. A window that has never been shown cannot become the
+    // foreground window, which is the whole reason this one exists.
+    ShowWindow(menuOwner_, SW_SHOWNA);
+
     // Registered only now that both windows exist. Registering it earlier left
     // a window during CreateWindowExW where a broadcast could be delivered with
     // window_ still null — and Relayout would then call
     // InvalidateRect(nullptr, ...), which repaints every window on the desktop.
     taskbarCreatedMessage_ = RegisterTaskbarCreatedMessage();
+
+    // Read once here and refreshed on WM_SETTINGCHANGE. It used to be fetched
+    // from the registry inside every Paint — one RegGetValueW per monitor per
+    // second, forever, for a value that only changes on a theme switch.
+    taskbarTextColor_ = TaskbarTextColor();
 
     taskbar_ = QueryTaskbar();
     dpi_ = taskbar_.valid ? taskbar_.dpi : 96;
@@ -142,7 +163,57 @@ bool App::Initialise(HINSTANCE instance) {
     ShowWindow(window_, SW_SHOWNOACTIVATE);
     AddTrayIcon();
 
-    SetTimer(window_, kTaskbarPollTimerId, kTaskbarPollIntervalMs, nullptr);
+    StartTaskbarPoll();
+    return true;
+}
+
+void App::StartTaskbarPoll() {
+    if (!window_) return;
+
+    // A coalescable timer lets Windows batch this wakeup with whatever else the
+    // system is already doing, instead of forcing the CPU out of idle on its own
+    // schedule twice a second. That is the difference that shows up in laptop
+    // battery life; the CPU cost of the poll itself is microseconds.
+    //
+    // Windows 8 and later, resolved dynamically because the manifest still
+    // declares 8.1 support and this must not become a hard dependency.
+    using SetCoalescableTimerFn =
+        UINT_PTR(WINAPI*)(HWND, UINT_PTR, UINT, TIMERPROC, ULONG);
+
+    static SetCoalescableTimerFn coalescable = []() -> SetCoalescableTimerFn {
+        HMODULE user32 = GetModuleHandleW(L"user32.dll");
+        if (!user32) return nullptr;
+        return reinterpret_cast<SetCoalescableTimerFn>(
+            GetProcAddress(user32, "SetCoalescableTimer"));
+    }();
+
+    if (coalescable) {
+        coalescable(window_, kTaskbarPollTimerId, kTaskbarPollIntervalMs, nullptr,
+                    kTaskbarPollToleranceMs);
+    } else {
+        SetTimer(window_, kTaskbarPollTimerId, kTaskbarPollIntervalMs, nullptr);
+    }
+}
+
+bool App::CreateWidgetWindow() {
+    // Created as a popup first, then converted to a child if embedding works.
+    // WS_EX_LAYERED gives us the colour key that lets the taskbar show through;
+    // without it the widget would sit on an opaque rectangle, and GDI cannot
+    // reproduce the Windows 11 acrylic behind it.
+    window_ = CreateWindowExW(WS_EX_TOOLWINDOW | WS_EX_TOPMOST | WS_EX_LAYERED,
+                              kWindowClass, kWindowTitle, WS_POPUP, 0, 0, 100, 24,
+                              nullptr, nullptr, instance_, this);
+
+    if (!window_) return false;
+
+    SetLayeredWindowAttributes(window_, kChromaKey, 0, LWA_COLORKEY);
+
+    // The old window's buffer belonged to the old DC.
+    buffer_.reset();
+    bufferDc_.reset();
+    bufferWidth_ = 0;
+    bufferHeight_ = 0;
+
     return true;
 }
 
@@ -155,7 +226,10 @@ int App::Run() {
     return static_cast<int>(message.wParam);
 }
 
-void App::RequestQuit() { PostQuitMessage(0); }
+void App::RequestQuit() {
+    quitting_ = true;
+    PostQuitMessage(0);
+}
 
 // -------------------------------------------------------------------- moving
 
@@ -209,12 +283,17 @@ bool App::OnDragMouseMove() {
     return true;
 }
 
-bool App::OnDragButtonUp() {
+bool App::OnDragButtonUp(bool releaseCapture) {
     if (!dragging_) return false;
 
-    ReleaseCapture();
+    // Flags first. MSDN forbids calling ReleaseCapture while handling
+    // WM_CAPTURECHANGED, and clearing these before the call also stops a
+    // re-entrant notification from running this function twice and writing the
+    // position to disk twice.
     dragging_ = false;
     moveMode_ = false;   // one drag per arming
+
+    if (releaseCapture) ReleaseCapture();
 
     const bool horizontal = TaskbarIsHorizontal();
     const int barLength = horizontal ? (taskbar_.bounds.right - taskbar_.bounds.left)
@@ -263,7 +342,10 @@ void App::SetProfileMenuNames(std::vector<std::wstring> names) {
 }
 
 HFONT App::MenuFont() {
-    if (menuFont_) return menuFont_.get();
+    // Rebuilt when the DPI changes, otherwise the owner-drawn profile rows would
+    // stay at the old point size while every ordinary item around them scaled.
+    if (menuFont_ && menuFontDpi_ == dpi_) return menuFont_.get();
+    menuFont_.reset();
 
     // The shell's own menu font, so an owner-drawn row is indistinguishable
     // from the ordinary items around it.
@@ -271,6 +353,7 @@ HFONT App::MenuFont() {
     metrics.cbSize = sizeof(metrics);
     if (SystemParametersInfoW(SPI_GETNONCLIENTMETRICS, sizeof(metrics), &metrics, 0)) {
         menuFont_.reset(CreateFontIndirectW(&metrics.lfMenuFont));
+        menuFontDpi_ = dpi_;
     }
 
     return menuFont_.get();
@@ -371,8 +454,10 @@ void App::OnMenuSelect(WPARAM wParam, LPARAM lParam) {
 
     lastMenuItemValid_ = false;
 
-    // Submenu headings have no command and no row to hit-test.
-    if (!menu || (flags & MF_POPUP)) return;
+    // Submenu headings, separators and the informational rows all report a
+    // command of 0, and none of them has a row worth hit-testing. Capturing one
+    // would leave a rectangle behind that belongs to the wrong item.
+    if (!menu || (flags & MF_POPUP) || LOWORD(wParam) == 0) return;
 
     // GetMenuItemRect takes a *position*, not a command id — there is no
     // MF_BYCOMMAND form of it — while WM_MENUSELECT reports the command id.
@@ -509,9 +594,8 @@ LRESULT App::HandleMessage(HWND window, UINT message, WPARAM wParam, LPARAM lPar
             if (window != window_) break;
             // Something took the mouse away mid-drag — a shell menu, a lock
             // screen. Commit where it currently sits rather than snapping back.
-            // OnDragButtonUp clears the flags itself, so it must be called
-            // before they are touched.
-            OnDragButtonUp();
+            // Capture is already gone, so do not release it again.
+            OnDragButtonUp(false);
             return 0;
 
         case WM_RBUTTONUP:
@@ -521,7 +605,7 @@ LRESULT App::HandleMessage(HWND window, UINT message, WPARAM wParam, LPARAM lPar
             if (window != window_) break;
 
             // A release that ends a drag must not also open the menu.
-            if (OnDragButtonUp()) return 0;
+            if (OnDragButtonUp(true)) return 0;
 
             POINT cursor{};
             GetCursorPos(&cursor);
@@ -530,6 +614,17 @@ LRESULT App::HandleMessage(HWND window, UINT message, WPARAM wParam, LPARAM lPar
         }
 
         case WM_TIMER:
+            if (wParam == kRecoveryTimerId) {
+                // The shell did not send TaskbarCreated, or sent it before we
+                // were ready. Try to rebuild anyway.
+                if (!window_) {
+                    OnTaskbarCreated();
+                } else {
+                    KillTimer(menuOwner_, kRecoveryTimerId);
+                }
+                return 0;
+            }
+
             if (wParam == kTaskbarPollTimerId) {
                 const TaskbarInfo current = QueryTaskbar();
                 // The notification area's bounds are compared too, not just the
@@ -560,16 +655,34 @@ LRESULT App::HandleMessage(HWND window, UINT message, WPARAM wParam, LPARAM lPar
             return 0;
 
         case WM_DPICHANGED:
+            // Guarded like the other cases: menuOwner_ is top-level and would
+            // otherwise run this a second time, including while window_ is null
+            // during an Explorer restart.
+            if (window != window_) break;
             OnDpiChanged();
             return 0;
 
-        case WM_SETTINGCHANGE:
-            // Covers a theme switch, which changes the colour the readout is
-            // drawn in. Broadcast to top-level windows only, so once the widget
-            // is embedded this arrives at the menu owner — repaint the widget,
-            // not whichever window happened to be notified.
-            if (window_) InvalidateRect(window_, nullptr, FALSE);
+        case WM_SETTINGCHANGE: {
+            // Broadcast whenever *any* process calls SystemParametersInfo, so it
+            // fires for mouse settings, power settings, policy refreshes and
+            // much else. Only a theme change matters here, and that arrives as
+            // "ImmersiveColorSet".
+            const wchar_t* area = reinterpret_cast<const wchar_t*>(lParam);
+            const bool themeChanged =
+                area == nullptr || wcscmp(area, L"ImmersiveColorSet") == 0;
+
+            if (themeChanged) {
+                taskbarTextColor_ = TaskbarTextColor();
+                // Menu metrics can change with the theme too.
+                menuFont_.reset();
+                menuFontDpi_ = 0;
+                // This is broadcast to top-level windows only, so once embedded
+                // it arrives at the menu owner — repaint the widget, not
+                // whichever window happened to be notified.
+                if (window_) InvalidateRect(window_, nullptr, FALSE);
+            }
             return 0;
+        }
 
         case WM_MEASUREITEM:
             OnMeasureProfileItem(reinterpret_cast<MEASUREITEMSTRUCT*>(lParam));
@@ -584,11 +697,39 @@ LRESULT App::HandleMessage(HWND window, UINT message, WPARAM wParam, LPARAM lPar
             return 0;
 
         case WM_DESTROY:
-            // The hidden menu owner shares this proc; only the widget going
-            // away should end the message loop.
+            // The hidden menu owner shares this proc, so only the widget's own
+            // destruction is interesting.
             if (window == window_) {
                 KillTimer(window, kTaskbarPollTimerId);
-                PostQuitMessage(0);
+
+                if (quitting_) {
+                    PostQuitMessage(0);
+                } else {
+                    // The shell destroyed us, not the user. Once embedded, the
+                    // widget is a WS_CHILD of Shell_TrayWnd, so an Explorer
+                    // restart takes it down with the taskbar — and quitting here
+                    // meant the app simply vanished whenever Explorer restarted,
+                    // with the TaskbarCreated handling below never getting a
+                    // chance to run.
+                    //
+                    // Anything the workers posted to this window is about to be
+                    // discarded with it, and those payloads are heap-owned.
+                    MSG queued;
+                    while (PeekMessageW(&queued, window, WM_PINGER_RESULT,
+                                        WM_PINGER_RESULT, PM_REMOVE)) {
+                        delete reinterpret_cast<PingResult*>(queued.lParam);
+                    }
+
+                    window_ = nullptr;
+                    trayIconAdded_ = false;
+
+                    // Rebuild on the broadcast, or failing that on this timer.
+                    // Without the fallback, a shell that never restarts would
+                    // leave the process alive with nothing on screen and no tray
+                    // icon — unquittable except through Task Manager.
+                    SetTimer(menuOwner_, kRecoveryTimerId, kRecoveryIntervalMs,
+                             nullptr);
+                }
             }
             return 0;
 
@@ -609,41 +750,50 @@ void App::OnPaint() {
     RECT client{};
     GetClientRect(window_, &client);
 
-    // Double buffered: the taskbar is a busy background and painting cell by
-    // cell straight to the screen tears visibly.
-    ScopedMemoryDC memory(CreateCompatibleDC(dc));
-    ScopedBitmap buffer(
-        CreateCompatibleBitmap(dc, client.right - client.left, client.bottom - client.top));
+    const int width = client.right - client.left;
+    const int height = client.bottom - client.top;
 
-    if (memory && buffer) {
-        SelectGuard bufferGuard(memory.get(), buffer.get());
+    if (width > 0 && height > 0) {
+        // The back buffer is rebuilt only when the widget changes size, not on
+        // every frame. Double buffering is needed because the taskbar is a busy
+        // background and painting cell by cell straight to the screen tears —
+        // but creating the DC and bitmap each time meant two GDI allocations a
+        // second, forever, which made the handle count oscillate and looked
+        // exactly like a leak to anyone watching Task Manager.
+        if (!bufferDc_) bufferDc_.reset(CreateCompatibleDC(dc));
 
-        // Clear to the colour key, which the layered window turns transparent.
-        //
-        // This must be a real fill, not a blit from the window DC: nothing ever
-        // erases our background (hbrBackground is null and WM_ERASEBKGND is
-        // claimed), so that DC still holds the previous frame and the latency
-        // text would smear over itself — "1234 ms" shrinking to "12 ms" would
-        // leave the trailing glyphs behind.
-        ScopedBrush chroma(CreateSolidBrush(kChromaKey));
-        if (chroma) {
-            RECT full{0, 0, client.right - client.left, client.bottom - client.top};
-            FillRect(memory.get(), &full, chroma.get());
+        if (bufferDc_ && (!buffer_ || width != bufferWidth_ || height != bufferHeight_)) {
+            buffer_.reset(CreateCompatibleBitmap(dc, width, height));
+            bufferWidth_ = width;
+            bufferHeight_ = height;
         }
 
-        int x = client.left;
-        for (auto& monitor : monitors_) {
-            RECT slot = client;
-            slot.left = x;
-            slot.right = x + monitor->DesiredWidth();
+        // The colour key never changes, so neither does its brush.
+        if (!chromaBrush_) chromaBrush_.reset(CreateSolidBrush(kChromaKey));
 
-            monitor->Paint(memory.get(), slot);
+        if (bufferDc_ && buffer_ && chromaBrush_) {
+            SelectGuard bufferGuard(bufferDc_.get(), buffer_.get());
 
-            x = slot.right + MulDiv(kMonitorGap, dpi_, 96);
+            // Clear to the colour key, which the layered window turns
+            // transparent. This must be a real fill rather than a blit from the
+            // window DC: nothing erases our background, so that DC still holds
+            // the previous frame and the latency text would smear over itself.
+            RECT full{0, 0, width, height};
+            FillRect(bufferDc_.get(), &full, chromaBrush_.get());
+
+            int x = client.left;
+            for (auto& monitor : monitors_) {
+                RECT slot = client;
+                slot.left = x;
+                slot.right = x + monitor->DesiredWidth();
+
+                monitor->Paint(bufferDc_.get(), slot, taskbarTextColor_);
+
+                x = slot.right + MulDiv(kMonitorGap, dpi_, 96);
+            }
+
+            BitBlt(dc, 0, 0, width, height, bufferDc_.get(), 0, 0, SRCCOPY);
         }
-
-        BitBlt(dc, 0, 0, client.right - client.left, client.bottom - client.top,
-               memory.get(), 0, 0, SRCCOPY);
     }
 
     EndPaint(window_, &paint);
@@ -683,7 +833,11 @@ void App::Relayout() {
     }
 
     PositionWidget(window_, taskbar_, hostMode_, offsetAlong_, total, availableThickness_);
-    InvalidateRect(window_, nullptr, FALSE);
+
+    // Guarded: window_ is briefly null between the shell destroying the widget
+    // and TaskbarCreated rebuilding it, and InvalidateRect(nullptr, ...) means
+    // "repaint every window on the desktop".
+    if (window_) InvalidateRect(window_, nullptr, FALSE);
     UpdateTooltip();
 }
 
@@ -771,9 +925,24 @@ void App::AttachToTaskbar() {
 }
 
 void App::OnTaskbarCreated() {
-    // Explorer restarted: the old parent window is gone, the notification icon
-    // went with it, and both have to be re-established.
+    // Explorer restarted: the old parent is gone, the notification icon went
+    // with it, and — because the widget was a child of the taskbar — so did the
+    // widget window itself.
     trayIconAdded_ = false;
+
+    if (!window_) {
+        if (!CreateWidgetWindow()) return;
+
+        KillTimer(menuOwner_, kRecoveryTimerId);
+
+        // Every monitor and every ping session captured the old handle, so they
+        // all have to be pointed at the replacement.
+        for (auto& monitor : monitors_) {
+            monitor->RebindWindow(window_);
+        }
+
+        StartTaskbarPoll();
+    }
 
     AttachToTaskbar();
     Relayout();
@@ -806,7 +975,6 @@ void App::OnResult(unsigned monitorIndex, PingResult* result) {
     if (monitorIndex >= monitors_.size()) return;   // monitor was removed mid-flight
 
     monitors_[monitorIndex]->HandleResult(*result);
-    UpdateTooltip();
 }
 
 // --------------------------------------------------------------------- input
@@ -957,6 +1125,14 @@ void App::ShowTrayMenu(POINT screenPoint) {
 }
 
 void App::UpdateTooltip() {
+    // Rate limited, because Shell_NotifyIconW is a cross-process call into
+    // Explorer and this text is only ever read while the pointer is resting on
+    // the tray icon. It used to run on every settled packet — once a second,
+    // forever, waking another process to update something nobody was looking at.
+    const ULONGLONG now = GetTickCount64();
+    if (lastTooltipUpdate_ != 0 && now - lastTooltipUpdate_ < 5000) return;
+    lastTooltipUpdate_ = now;
+
     // Kept simple on purpose: the first monitor's text, refreshed in place.
     // A real multi-region tooltip would need a TTM_ tracking control per grid,
     // which is a lot of machinery for a hover hint.

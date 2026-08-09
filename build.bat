@@ -32,10 +32,19 @@ echo Compiling resources...
 rc.exe /nologo /fo "%OUTDIR%\resources.res" /i src src\resources.rc
 if errorlevel 1 goto :failed
 
-REM /O1 favours size over speed, which is the right trade for a widget that
-REM spends its life asleep. /GL plus /LTCG lets the linker drop unused code.
+REM /O1 favours size over speed, the right trade for a widget that spends its
+REM life asleep. It already implies /Os and /Gy, so neither is listed.
+REM
+REM /Gw gives each global and static its own COMDAT, which is what lets the
+REM /OPT:REF below actually discard unreferenced *data* -- without it the linker
+REM can only drop unused functions, and this project is mostly constant tables.
+REM /Zc:inline drops unreferenced COMDATs the compiler would otherwise emit.
+REM
+REM /GS stays on deliberately. This app parses a user-editable file and formats
+REM network-derived data into fixed wchar_t buffers, which is precisely the
+REM pattern the stack cookie protects; a couple of KB is not worth removing it.
 if "%CONFIG%"=="release" (
-    set CFLAGS=/O1 /GL /DNDEBUG /MT
+    set CFLAGS=/O1 /Gw /Zc:inline /GL /DNDEBUG /MT
     set LFLAGS=/LTCG /OPT:REF /OPT:ICF
 ) else (
     set CFLAGS=/Od /Zi /MTd

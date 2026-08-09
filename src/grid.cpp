@@ -3,8 +3,6 @@
 #include "grid.h"
 
 #include <algorithm>
-#include <map>
-#include <utility>
 
 namespace pinger {
 
@@ -172,29 +170,43 @@ void GridRenderer::Paint(HDC target,
 
 namespace {
 
-// Keyed by colour and DPI, since a swatch is drawn at a fixed logical size.
-std::map<std::pair<COLORREF, int>, HBITMAP>& SwatchCache() {
-    static std::map<std::pair<COLORREF, int>, HBITMAP> cache;
-    return cache;
-}
+// The swatch cache.
+//
+// A flat array rather than a std::map: the realistic population is ten presets
+// plus a handful of custom picks, a linear scan of sixteen entries is free next
+// to the CreateCompatibleBitmap it saves, and it keeps <map> — several KB of
+// red-black tree code — out of the binary entirely.
+//
+// Keyed by colour *and* DPI, since a swatch is drawn at a fixed logical size.
+struct SwatchEntry {
+    COLORREF color = CLR_INVALID;
+    int      dpi = 0;
+    HBITMAP  bitmap = nullptr;
+};
+
+// Ten presets plus the two current colours fill twelve slots per DPI, so this
+// has to hold at least two DPIs' worth or the swatches quietly vanish after the
+// first display change.
+constexpr size_t kSwatchCapacity = 32;
+
+SwatchEntry g_swatches[kSwatchCapacity];
+size_t g_swatchCount = 0;
 
 }  // namespace
 
 HBITMAP SwatchForColor(COLORREF color, int dpi) {
-    auto& cache = SwatchCache();
-    const auto key = std::make_pair(color, dpi);
+    for (size_t i = 0; i < g_swatchCount; ++i) {
+        if (g_swatches[i].color == color && g_swatches[i].dpi == dpi) {
+            return g_swatches[i].bitmap;
+        }
+    }
 
-    const auto found = cache.find(key);
-    if (found != cache.end()) return found->second;
-
-    // Ten presets plus a handful of custom picks is the realistic ceiling.
-    //
-    // Past that, stop caching and return nothing rather than clearing: this is
-    // called from inside menu construction, and earlier items in the very menu
-    // being built already hold bitmaps from this cache. Deleting them here
-    // would pull them out from under an open menu. A missing swatch is a
-    // cosmetic loss on a pathological case; a dangling HBITMAP is not.
-    if (cache.size() >= 64) return nullptr;
+    // Full. Return nothing rather than evicting: this runs during menu
+    // construction, and earlier items in the very menu being built already hold
+    // bitmaps from this cache, so deleting one would pull it out from under an
+    // open menu. A missing swatch is cosmetic; a dangling HBITMAP is not.
+    // ClearSwatchCache, called only when no menu is up, is what reclaims them.
+    if (g_swatchCount >= kSwatchCapacity) return nullptr;
 
     const int size = std::max(8, Scale(12, dpi));
 
@@ -227,16 +239,20 @@ HBITMAP SwatchForColor(COLORREF color, int dpi) {
         // fails and leaks it.
     }
 
-    cache[key] = bitmap;
+    g_swatches[g_swatchCount].color = color;
+    g_swatches[g_swatchCount].dpi = dpi;
+    g_swatches[g_swatchCount].bitmap = bitmap;
+    ++g_swatchCount;
+
     return bitmap;
 }
 
 void ClearSwatchCache() {
-    auto& cache = SwatchCache();
-    for (auto& entry : cache) {
-        if (entry.second) DeleteObject(entry.second);
+    for (size_t i = 0; i < g_swatchCount; ++i) {
+        if (g_swatches[i].bitmap) DeleteObject(g_swatches[i].bitmap);
+        g_swatches[i] = SwatchEntry{};
     }
-    cache.clear();
+    g_swatchCount = 0;
 }
 
 }  // namespace pinger

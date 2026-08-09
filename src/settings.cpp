@@ -13,9 +13,18 @@
 #include <cstdlib>
 #include <cwchar>
 #include <cwctype>
-#include <fstream>
-#include <iterator>
-#include <sstream>
+#include <string>
+#include <vector>
+
+// Deliberately no <fstream> or <sstream>.
+//
+// Those two headers were, by a wide margin, the largest single contributor to
+// this binary: between them they instantiate basic_filebuf, basic_stringbuf,
+// both narrow and wide istream/ostream, and two complete sets of locale facets,
+// which construct at startup and stay resident. Tens of kilobytes for what this
+// file actually needs, which is: read a file, split it on newlines, write a
+// file. The code already did its own UTF-8 conversion and its own BOM handling,
+// so the streams were contributing nothing but byte transport.
 
 #include "raii.h"
 
@@ -147,10 +156,26 @@ std::wstring TrimCopy(const std::wstring& text) {
 // stray text are all skipped rather than treated as errors.
 std::vector<IniSection> ParseIni(const std::wstring& text) {
     std::vector<IniSection> sections;
-    std::wistringstream stream(text);
-    std::wstring line;
 
-    while (std::getline(stream, line)) {
+    // Hand-rolled line split. TrimCopy already strips the trailing \r, so CRLF
+    // and LF files both work without a second pass.
+    //
+    // `done` is set before the body runs, so the `continue`s below still
+    // terminate the loop — testing for the last line at the bottom would be
+    // skipped by every one of them.
+    size_t start = 0;
+    bool done = false;
+
+    while (!done) {
+        size_t end = text.find(L'\n', start);
+        if (end == std::wstring::npos) {
+            end = text.size();
+            done = true;
+        }
+
+        const std::wstring line = text.substr(start, end - start);
+        start = end + 1;
+
         const std::wstring trimmed = TrimCopy(line);
         if (trimmed.empty() || trimmed[0] == L';' || trimmed[0] == L'#') continue;
 
@@ -228,18 +253,78 @@ MonitorSettings ReadSettings(const IniSection& section) {
     return settings;
 }
 
-void WriteSettings(std::wostringstream& out, const MonitorSettings& settings) {
-    out << L"host=" << settings.host << L"\n";
-    out << L"success=" << ColorToHex(settings.success) << L"\n";
-    out << L"failure=" << ColorToHex(settings.failure) << L"\n";
-    out << L"rows=" << settings.rows << L"\n";
-    out << L"columns=" << settings.columns << L"\n";
-    out << L"cell=" << settings.cell << L"\n";
-    out << L"gap=" << settings.gap << L"\n";
-    out << L"interval=" << FormatIntervalRaw(settings.interval) << L"\n";
-    out << L"showLatency=" << (settings.showLatency ? L"1" : L"0") << L"\n";
-    out << L"textSize=" << settings.textSize << L"\n";
-    out << L"fillHorizontal=" << (settings.fillHorizontal ? L"1" : L"0") << L"\n";
+// Appends "key=value\n". The integer form goes through swprintf rather than a
+// stream inserter, which is what let the iostream dependency go.
+void AppendKey(std::wstring& out, const wchar_t* key, const std::wstring& value) {
+    out += key;
+    out += L'=';
+    out += value;
+    out += L'\n';
+}
+
+void AppendKey(std::wstring& out, const wchar_t* key, int value) {
+    wchar_t buffer[16];
+    swprintf(buffer, 16, L"%d", value);
+    AppendKey(out, key, buffer);
+}
+
+void WriteSettings(std::wstring& out, const MonitorSettings& settings) {
+    AppendKey(out, L"host", settings.host);
+    AppendKey(out, L"success", ColorToHex(settings.success));
+    AppendKey(out, L"failure", ColorToHex(settings.failure));
+    AppendKey(out, L"rows", settings.rows);
+    AppendKey(out, L"columns", settings.columns);
+    AppendKey(out, L"cell", settings.cell);
+    AppendKey(out, L"gap", settings.gap);
+    AppendKey(out, L"interval", FormatIntervalRaw(settings.interval));
+    AppendKey(out, L"showLatency", settings.showLatency ? L"1" : L"0");
+    AppendKey(out, L"textSize", settings.textSize);
+    AppendKey(out, L"fillHorizontal", settings.fillHorizontal ? L"1" : L"0");
+}
+
+// Reads a whole file into a byte string. Returns false if it cannot be opened;
+// an empty file reads as success with empty contents.
+bool ReadWholeFile(const std::wstring& path, std::string* out) {
+    if (!out) return false;
+    out->clear();
+
+    ScopedHandle file(CreateFileW(path.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr,
+                                  OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr));
+    if (!file) return false;
+
+    LARGE_INTEGER size{};
+    if (!GetFileSizeEx(file.get(), &size)) return false;
+
+    // A settings file this large is not ours. Refuse rather than allocate it.
+    if (size.QuadPart <= 0 || size.QuadPart > 4 * 1024 * 1024) return size.QuadPart == 0;
+
+    out->resize(static_cast<size_t>(size.QuadPart));
+
+    DWORD read = 0;
+    if (!ReadFile(file.get(), out->data(), static_cast<DWORD>(out->size()), &read,
+                  nullptr)) {
+        out->clear();
+        return false;
+    }
+
+    out->resize(read);
+    return true;
+}
+
+bool WriteWholeFile(const std::wstring& path, const std::string& bytes) {
+    ScopedHandle file(CreateFileW(path.c_str(), GENERIC_WRITE, 0, nullptr,
+                                  CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr));
+    if (!file) return false;
+
+    if (bytes.empty()) return true;
+
+    DWORD written = 0;
+    if (!WriteFile(file.get(), bytes.data(), static_cast<DWORD>(bytes.size()), &written,
+                   nullptr)) {
+        return false;
+    }
+
+    return written == bytes.size();
 }
 
 std::wstring DirectoryPath() {
@@ -294,12 +379,8 @@ SettingsDocument& Document() {
     if (path.empty()) return g_document;
 
     // Read as UTF-8 and widen; hosts can be IDNs and profile names are free text.
-    std::ifstream file(path.c_str(), std::ios::binary);
-    if (!file) return g_document;
-
-    std::string utf8((std::istreambuf_iterator<char>(file)),
-                     std::istreambuf_iterator<char>());
-    file.close();
+    std::string utf8;
+    if (!ReadWholeFile(path, &utf8)) return g_document;
 
     // Skip a UTF-8 BOM if a text editor added one.
     if (utf8.size() >= 3 && static_cast<unsigned char>(utf8[0]) == 0xEF &&
@@ -346,29 +427,37 @@ void Save() {
 
     SHCreateDirectoryExW(nullptr, directory.c_str(), nullptr);
 
-    std::wostringstream out;
-    out << L"; " << defaults::kProjectName << L" settings\n";
-    out << L"; Edited by hand at your own risk; unknown keys are ignored.\n\n";
+    std::wstring text;
+    // Roughly what a typical file comes to, so the appends below rarely realloc.
+    text.reserve(1024);
 
-    out << L"[widget]\n";
-    out << L"manualPosition=" << (g_document.placement.manual ? L"1" : L"0") << L"\n";
-    out << L"offsetFromRight=" << g_document.placement.offsetFromRight << L"\n\n";
+    text += L"; ";
+    text += defaults::kProjectName;
+    text += L" settings\n; Edited by hand at your own risk; unknown keys are ignored.\n\n";
+
+    text += L"[widget]\n";
+    AppendKey(text, L"manualPosition", g_document.placement.manual ? L"1" : L"0");
+    AppendKey(text, L"offsetFromRight", g_document.placement.offsetFromRight);
+    text += L'\n';
 
     for (const MonitorRecord& record : g_document.monitors) {
-        out << L"[monitor:" << record.id << L"]\n";
-        WriteSettings(out, record.settings);
-        out << L"\n";
+        text += L"[monitor:";
+        text += record.id;
+        text += L"]\n";
+        WriteSettings(text, record.settings);
+        text += L'\n';
     }
 
     int index = 0;
     for (const auto& profile : g_document.profiles) {
-        out << L"[profile:" << index++ << L"]\n";
-        out << L"name=" << profile.first << L"\n";
-        WriteSettings(out, profile.second);
-        out << L"\n";
+        wchar_t header[32];
+        swprintf(header, 32, L"[profile:%d]\n", index++);
+        text += header;
+        AppendKey(text, L"name", profile.first);
+        WriteSettings(text, profile.second);
+        text += L'\n';
     }
 
-    const std::wstring text = out.str();
     const int bytes = WideCharToMultiByte(CP_UTF8, 0, text.c_str(),
                                           static_cast<int>(text.size()), nullptr, 0,
                                           nullptr, nullptr);
@@ -379,12 +468,7 @@ void Save() {
     // Write to a temp file and swap, so an interrupted write cannot truncate
     // the real settings file.
     const std::wstring temp = path + L".tmp";
-    {
-        std::ofstream file(temp.c_str(), std::ios::binary | std::ios::trunc);
-        if (!file) return;
-        file.write(utf8.data(), static_cast<std::streamsize>(utf8.size()));
-        if (!file) return;
-    }
+    if (!WriteWholeFile(temp, utf8)) return;
 
     MoveFileExW(temp.c_str(), path.c_str(), MOVEFILE_REPLACE_EXISTING);
 }

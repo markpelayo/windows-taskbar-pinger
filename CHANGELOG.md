@@ -9,6 +9,115 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 Nothing yet.
 
+## [1.1.0] — 2026-08-09
+
+A full audit pass for correctness, leaks and footprint. No new features; the
+version bumps to 1.1.0 because the internals changed substantially.
+
+### Fixed
+
+- **A use-after-free in the ping worker.** If a worker ever failed to stop
+  within the timeout, the code deliberately abandoned it — but then destroyed
+  the object the worker was still reading, including an interlocked write to a
+  freed heap slot, which is corruption rather than merely a stale read. The
+  worker's state now lives in a refcounted block the thread co-owns, so
+  abandoning one is safe. As a side effect the "abandoned" flag is gone, and a
+  monitor whose worker wedged is no longer disabled for the rest of the session.
+
+- **Explorer restarting killed the app.** Once embedded, the widget is a child
+  of `Shell_TrayWnd`, so the shell destroys it along with the taskbar. The
+  `WM_DESTROY` handler treated that as the user quitting and ended the message
+  loop — meaning the `TaskbarCreated` recovery path added in 1.0.1 could never
+  actually run. The widget is now rebuilt, with a timer as a fallback in case
+  the broadcast never arrives.
+
+- **One busy moment could freeze a monitor permanently.** `PostMessage` fails
+  with a full queue as well as on a dead window, and both were treated as fatal
+  to the worker. Only an invalid window handle retires it now; a full queue is
+  transient and the next packet gets through.
+
+- **Modal dialogs disabled the whole taskbar.** They were owned by the widget,
+  and Windows resolves a child window's owner to its top-level ancestor — which
+  here is the taskbar itself. They now use the same hidden owner window the
+  menus use.
+
+- **`ReleaseCapture` was called from inside `WM_CAPTURECHANGED`,** which MSDN
+  forbids and which could re-enter the handler and write the widget position
+  twice.
+
+- **A latency average sitting on a digit boundary** — 9.5 ms, say, which is an
+  utterly ordinary gateway figure — flipped between `9 ms` and `10 ms` and
+  triggered a full relayout, including a `SetWindowPos` on a child of the
+  taskbar, potentially every second. The reserved width now grows immediately
+  but only shrinks once the shorter reading has held for ten samples.
+
+- Queued ping results are drained at shutdown and when the shell destroys the
+  widget, instead of being discarded with their heap payloads.
+
+- The taskbar-thickness fallback was `MulDiv(24, 96, 96)` — that is, 24 at any
+  scaling.
+
+- The menu font is rebuilt on a DPI or theme change, so the owner-drawn profile
+  rows no longer stay at the old size while everything around them scales.
+
+- **The CMake build produced a `/MD` binary** that needs the Visual C++
+  redistributable installed, contradicting both the README and the release
+  notes. It now matches `build.bat` and links the CRT statically. The shipped
+  artifact was always correct, since CI runs `build.bat`; anyone building
+  through CMake was getting a more fragile executable.
+
+### Changed — footprint
+
+- **`<fstream>` and `<sstream>` are gone.** Between them they instantiated file
+  and string streams, both narrow and wide, and two complete sets of locale
+  facets that constructed at startup and stayed resident — by a wide margin the
+  largest single contributor to the binary. The settings code already did its
+  own UTF-8 conversion and BOM handling, so the streams were contributing
+  nothing but byte transport; they are replaced by `CreateFile`/`ReadFile`/
+  `WriteFile` and a line splitter.
+
+- **The back buffer is no longer rebuilt every frame.** A memory DC, a bitmap
+  and a brush were created and destroyed on every repaint — three GDI objects a
+  second, forever. Nothing leaked, but the handle count visibly oscillated in
+  Task Manager, and it contradicted the file's own claim that a redraw allocates
+  nothing. They are cached and rebuilt only when the widget changes size.
+
+- **The theme colour is no longer read from the registry on every frame.** It
+  was a `RegGetValueW` per monitor per second for a value that changes only on a
+  theme switch, which the app already receives a broadcast for.
+
+- **The tray tooltip no longer updates once a second.** `Shell_NotifyIcon` is a
+  cross-process call into Explorer, and this text is only ever read while the
+  pointer rests on the icon — so the app was waking another process every second
+  to update something nobody was looking at. Rate limited to once every five
+  seconds.
+
+- **The taskbar poll uses a coalescable timer** where available, letting Windows
+  batch the wakeup with other system activity rather than pulling an idle CPU
+  out of sleep on its own schedule. This is the part that matters for laptop
+  battery; the poll's CPU cost was always negligible.
+
+- The swatch cache is a small fixed array rather than a `std::map`, and the ping
+  reply buffer is on the stack rather than heap-allocated. `<map>` is out of the
+  binary entirely.
+
+- Build flags gain `/Gw` and `/Zc:inline`, which let the existing `/OPT:REF`
+  discard unreferenced *data* and not just code. `/GS` stays on deliberately:
+  this app parses a user-editable file and formats network data into fixed
+  buffers, which is exactly what the stack cookie protects.
+
+### Deliberately not changed
+
+- **Exceptions and RTTI stay enabled.** Disabling exceptions is an unsupported
+  STL configuration and would turn an allocation failure into an abort; RTTI
+  costs almost nothing here because there are no virtual functions.
+- **One thread per monitor stays.** Sharing one would save around 100 KB at the
+  eight-monitor maximum and nothing at all at the default of one, in exchange
+  for a substantially more complicated scheduler.
+- **The taskbar poll stays.** There is no notification for the notification area
+  changing width, which is the case it exists to catch.
+
+
 ## [1.0.5] — 2026-08-09
 
 ### Added
@@ -199,8 +308,10 @@ These are deliberate differences, not omissions:
 - **Keyboard shortcuts.** The macOS menu had ⌘L, ⌘D, ⌘S and friends. Context menus opened by
   right-click have no equivalent accelerator context.
 
-[Unreleased]: https://github.com/markpelayo/windows-taskbar-pinger/compare/v1.0.5...HEAD
+[Unreleased]: https://github.com/markpelayo/windows-taskbar-pinger/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/markpelayo/windows-taskbar-pinger/releases/tag/v1.1.0
 [1.0.5]: https://github.com/markpelayo/windows-taskbar-pinger/releases/tag/v1.0.5
+[1.1.0]: https://github.com/markpelayo/windows-taskbar-pinger/releases/tag/v1.1.0
 [1.0.5]: https://github.com/markpelayo/windows-taskbar-pinger/releases/tag/v1.0.5
 [1.0.4]: https://github.com/markpelayo/windows-taskbar-pinger/releases/tag/v1.0.4
 [1.0.3]: https://github.com/markpelayo/windows-taskbar-pinger/releases/tag/v1.0.3

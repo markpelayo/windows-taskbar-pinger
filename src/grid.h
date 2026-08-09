@@ -93,9 +93,11 @@ private:
 
 // Renders a small rounded colour swatch for the colour menus.
 //
-// Menus are rebuilt every time they open, so these are cached by colour rather
-// than recreated per item; the cache is bounded and cleared wholesale if a user
-// somehow picks hundreds of custom colours.
+// Menus are rebuilt every time they open, so these are cached by colour and DPI
+// rather than recreated per item. The cache is a small fixed array; once full it
+// returns null rather than evicting, because eviction during menu construction
+// would delete a bitmap the half-built menu already references. Callers treat a
+// null swatch as "no image", which is harmless.
 HBITMAP SwatchForColor(COLORREF color, int dpi);
 
 // Frees every cached swatch. Called on shutdown.

@@ -101,7 +101,9 @@ private:
     // Returns true when the message was consumed by an in-progress drag.
     bool OnDragButtonDown();
     bool OnDragMouseMove();
-    bool OnDragButtonUp();
+    // `releaseCapture` must be false when called from WM_CAPTURECHANGED: capture
+    // is already gone by then, and MSDN forbids releasing it from that handler.
+    bool OnDragButtonUp(bool releaseCapture);
 
     // Is the taskbar horizontal? Dragging follows its long axis either way.
     bool TaskbarIsHorizontal() const;
@@ -146,6 +148,28 @@ private:
     bool lastMenuItemValid_ = false;
 
     ScopedFont menuFont_;
+    int        menuFontDpi_ = 0;
+
+    // Cached paint resources.
+    //
+    // These used to be created and destroyed inside every WM_PAINT — a memory
+    // DC, a bitmap and a brush, three GDI objects a second, forever. Nothing
+    // leaked, but the handle count visibly oscillated in Task Manager and it
+    // contradicted this file's own claim that a redraw allocates nothing. The
+    // buffer is now rebuilt only when the widget's size changes.
+    ScopedMemoryDC bufferDc_;
+    ScopedBitmap   buffer_;
+    int            bufferWidth_ = 0;
+    int            bufferHeight_ = 0;
+    ScopedBrush    chromaBrush_;
+
+    // The shell's text colour, refreshed on WM_SETTINGCHANGE rather than read
+    // from the registry on every frame.
+    COLORREF taskbarTextColor_ = RGB(255, 255, 255);
+
+    // Rate limit for the tray tooltip, which is a cross-process call into
+    // Explorer and only ever seen while hovering.
+    ULONGLONG lastTooltipUpdate_ = 0;
 
     std::vector<std::unique_ptr<MonitorController>> monitors_;
 
@@ -168,8 +192,19 @@ private:
     // against the taskbar without recomputing everything on every mouse move.
     int lastTotalWidth_ = 0;
 
+    // Creates the widget window and applies its layered colour key. Called at
+    // startup and again if the shell destroys it during an Explorer restart.
+    bool CreateWidgetWindow();
+
+    // Starts the taskbar poll, preferring a coalescable timer where available.
+    void StartTaskbarPoll();
+
     UINT taskbarCreatedMessage_ = 0;
     bool trayIconAdded_ = false;
+
+    // True once the user has asked to quit, so WM_DESTROY can tell a deliberate
+    // shutdown from the shell tearing the widget down underneath us.
+    bool quitting_ = false;
 
     // Which monitor a posted WM_PINGER_REMOVE refers to. Held as an id rather
     // than an index because indices are renumbered on every removal.
