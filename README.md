@@ -78,7 +78,7 @@ precisely so that cloning and building needs nothing but a compiler.
 
 ## Status
 
-**v1.1.1.** It builds and runs on Windows 11, and the core — grid, pinging, menu, taskbar embedding
+**v1.2.0.** It builds and runs on Windows 11, and the core — grid, pinging, menu, taskbar embedding
 — works.
 
 Testing beyond that is thin. It has been exercised on Windows 11 at 100% scaling with a
@@ -118,8 +118,15 @@ cmake --build build --config Release
 
 ### Start it at login
 
-Press <kbd>Win</kbd>+<kbd>R</kbd>, enter `shell:startup`, and put a shortcut to `Pinger.exe` in the
-folder that opens.
+Right-click the grid and tick **Start with Windows**.
+
+That writes a value under `HKEY_CURRENT_USER\...\CurrentVersion\Run`, which needs no administrator
+rights and shows up in Task Manager's **Startup** tab, so it can be turned off from there too. Move
+the folder later and the app corrects the stored path the next time it runs.
+
+If a policy on your machine locks that key, the app says so and you can fall back to the manual
+route: press <kbd>Win</kbd>+<kbd>R</kbd>, enter `shell:startup`, and put a shortcut to `Pinger.exe`
+in the folder that opens.
 
 ### Uninstalling
 
@@ -128,6 +135,13 @@ and if you want to forget your saved monitors and profiles:
 
 ```bat
 del "%APPDATA%\Pinger\settings.ini"
+```
+
+If you had **Start with Windows** on, untick it before deleting the folder — or remove the leftover
+entry afterwards:
+
+```bat
+reg delete "HKCU\Software\Microsoft\Windows\CurrentVersion\Run" /v Pinger /f
 ```
 
 ## Quick start
@@ -169,6 +183,7 @@ Right-click any grid:
 | **Restore monitor defaults** | Reset this grid to the factory settings |
 | **Duplicate this monitor** | Add another grid with a copy of these settings |
 | **Remove this monitor** | Delete just this grid (disabled when one is left) |
+| **Start with Windows** | Toggle. Adds or removes an `HKEY_CURRENT_USER` Run entry — no admin rights, and visible in Task Manager's Startup tab |
 | **Quit Pinger** | |
 
 Every setting persists across launches, per monitor, in `%APPDATA%\Pinger\settings.ini`.

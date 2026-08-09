@@ -4,6 +4,7 @@
 #include <objbase.h>
 
 #include "app.h"
+#include "autostart.h"
 
 namespace {
 
@@ -32,6 +33,11 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance,
     // because this process is a UI thread with a message loop.
     const HRESULT com = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
     const bool comInitialised = SUCCEEDED(com);
+
+    // If the app was registered to start with Windows and has since been moved,
+    // the stored path points at nothing. Fix it now rather than let the user
+    // discover it after their next reboot.
+    pinger::autostart::RepairPathIfNeeded();
 
     int exitCode = 1;
     {

@@ -65,6 +65,7 @@ cl.exe /nologo /std:c++17 /EHsc /W4 /permissive- /utf-8 ^
     /Fd:"%OUTDIR%\Pinger.pdb" ^
     src\main.cpp src\app.cpp src\monitor.cpp src\grid.cpp ^
     src\ping.cpp src\taskbar.cpp src\settings.cpp src\dialogs.cpp ^
+    src\autostart.cpp ^
     /link !LFLAGS! ^
     /SUBSYSTEM:WINDOWS ^
     /ENTRY:wWinMainCRTStartup ^

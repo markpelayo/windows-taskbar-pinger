@@ -9,6 +9,28 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 Nothing yet.
 
+## [1.2.0] — 2026-08-09
+
+### Added
+
+- **Start with Windows**, a toggle near the bottom of the menu. Previously this meant putting a
+  shortcut in the Startup folder by hand, which the README explained and nobody enjoys.
+
+  It writes a value under `HKEY_CURRENT_USER\...\CurrentVersion\Run`. Per-user rather than
+  per-machine on purpose: the machine-wide key would start the widget for everyone with an account
+  on the computer and requires administrator rights to write, and a status indicator is not worth
+  an elevation prompt. A Startup-folder shortcut would also have worked, but creating one means COM
+  and `IShellLink` for something a single registry value expresses exactly — and the Run key has the
+  advantage of appearing in Task Manager's **Startup** tab, so it can be switched off without
+  opening the app.
+
+  The stored path is quoted, so a folder with a space in its name works, and it is repaired at
+  startup if the app has been moved since — otherwise moving the folder would silently stop it
+  starting, and you would only find out after the next reboot.
+
+  If group policy locks the Run key the app says so and points at the manual alternative, rather
+  than leaving the checkmark refusing to move for no visible reason.
+
 ## [1.1.1] — 2026-08-09
 
 ### Changed
@@ -324,10 +346,12 @@ These are deliberate differences, not omissions:
 - **Keyboard shortcuts.** The macOS menu had ⌘L, ⌘D, ⌘S and friends. Context menus opened by
   right-click have no equivalent accelerator context.
 
-[Unreleased]: https://github.com/markpelayo/windows-taskbar-pinger/compare/v1.1.1...HEAD
+[Unreleased]: https://github.com/markpelayo/windows-taskbar-pinger/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/markpelayo/windows-taskbar-pinger/releases/tag/v1.2.0
 [1.1.1]: https://github.com/markpelayo/windows-taskbar-pinger/releases/tag/v1.1.1
 [1.1.0]: https://github.com/markpelayo/windows-taskbar-pinger/releases/tag/v1.1.0
 [1.0.5]: https://github.com/markpelayo/windows-taskbar-pinger/releases/tag/v1.0.5
+[1.2.0]: https://github.com/markpelayo/windows-taskbar-pinger/releases/tag/v1.2.0
 [1.1.1]: https://github.com/markpelayo/windows-taskbar-pinger/releases/tag/v1.1.1
 [1.1.0]: https://github.com/markpelayo/windows-taskbar-pinger/releases/tag/v1.1.0
 [1.0.5]: https://github.com/markpelayo/windows-taskbar-pinger/releases/tag/v1.0.5

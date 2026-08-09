@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.20)
 
-project(Pinger VERSION 1.1.1 LANGUAGES CXX)
+project(Pinger VERSION 1.2.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -24,6 +24,7 @@ add_executable(Pinger WIN32
     src/taskbar.cpp
     src/settings.cpp
     src/dialogs.cpp
+    src/autostart.cpp
     src/resources.rc
     src/app.manifest
 )

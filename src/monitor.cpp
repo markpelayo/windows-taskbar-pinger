@@ -12,6 +12,7 @@
 #include <cwctype>
 
 #include "app.h"
+#include "autostart.h"
 #include "dialogs.h"
 #include "resource.h"
 #include "taskbar.h"
@@ -614,6 +615,14 @@ HMENU MonitorController::BuildMenu(std::vector<HMENU>* ownedSubmenus) {
                L"Remove this monitor");
 
     AppendSeparator(menu);
+
+    // App-wide rather than per-monitor, like Quit — which is why it sits down
+    // here with it rather than up among the grid's own settings.
+    AppendItem(menu,
+               MF_STRING | (autostart::IsEnabled() ? MF_CHECKED : MF_UNCHECKED),
+               IDM_TOGGLE_AUTOSTART, L"Start with Windows");
+
+    AppendSeparator(menu);
     AppendItem(menu, MF_STRING, IDM_QUIT, L"Quit Pinger");
 
     return menu;
@@ -944,6 +953,24 @@ void MonitorController::HandleCommand(int command) {
         case IDM_REMOVE:
             if (app_) app_->RemoveMonitor(this);
             break;
+
+        case IDM_TOGGLE_AUTOSTART: {
+            const bool enable = !autostart::IsEnabled();
+            if (!autostart::SetEnabled(enable)) {
+                // Realistically this only fails when group policy locks the Run
+                // key, which is worth saying rather than leaving the checkmark
+                // mysteriously refusing to move.
+                MessageBoxW(owner,
+                            L"Windows would not let the startup entry be changed.\n\n"
+                            L"This usually means a policy on this machine controls "
+                            L"which apps may start automatically. You can still add "
+                            L"a shortcut yourself: press Win+R, enter shell:startup, "
+                            L"and put a shortcut to Pinger.exe in the folder that "
+                            L"opens.",
+                            L"Start with Windows", MB_OK | MB_ICONWARNING);
+            }
+            break;
+        }
 
         case IDM_QUIT:
             if (app_) app_->RequestQuit();
