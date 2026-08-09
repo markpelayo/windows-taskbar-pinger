@@ -1,5 +1,8 @@
 # windows-taskbar-pinger
 
+<img width="387" height="87" alt="image" src="https://github.com/user-attachments/assets/a7864783-1de8-4370-a64e-a57ecce9870a" />
+
+
 [![build](https://github.com/markpelayo/windows-taskbar-pinger/actions/workflows/build.yml/badge.svg)](https://github.com/markpelayo/windows-taskbar-pinger/actions/workflows/build.yml)
 ![Platform: Windows 10/11](https://img.shields.io/badge/platform-Windows%2010%2F11-lightgrey)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
