@@ -82,8 +82,43 @@ TaskbarInfo QueryTaskbar() {
 
     info.edge = EdgeFromBounds(info.bounds);
     info.dpi = DpiForWindow(info.window);
+
+    // The notification area is a direct child of the taskbar on every Windows
+    // version that matters. If it is ever renamed or restructured we simply
+    // fall back to a left-edge offset rather than failing.
+    HWND notify = FindWindowExW(info.window, nullptr, L"TrayNotifyWnd", nullptr);
+    if (notify && GetWindowRect(notify, &info.notifyBounds)) {
+        if (info.notifyBounds.right > info.notifyBounds.left) {
+            info.hasNotifyArea = true;
+        }
+    }
+
     info.valid = true;
     return info;
+}
+
+COLORREF TaskbarTextColor() {
+    // HKCU\...\Themes\Personalize has two separate values. AppsUseLightTheme
+    // governs application windows; SystemUsesLightTheme governs the shell —
+    // the taskbar, the Start menu, the notification flyouts. We want the
+    // second one, and the Windows 11 default is 0, meaning a dark taskbar with
+    // white text.
+    DWORD value = 0;
+    DWORD size = sizeof(value);
+
+    const LSTATUS status = RegGetValueW(
+        HKEY_CURRENT_USER,
+        L"Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize",
+        L"SystemUsesLightTheme", RRF_RT_REG_DWORD, nullptr, &value, &size);
+
+    if (status == ERROR_SUCCESS) {
+        return value != 0 ? RGB(0, 0, 0) : RGB(255, 255, 255);
+    }
+
+    // The value is absent on older builds and on some managed profiles. White
+    // is the safer default: it is what the shipped Windows 10 and 11 themes
+    // use, and unreadable-dark-on-dark is a worse failure than the reverse.
+    return RGB(255, 255, 255);
 }
 
 int UsableThickness(const TaskbarInfo& info) {

@@ -46,6 +46,13 @@ struct TaskbarInfo {
     TaskbarEdge edge = TaskbarEdge::Bottom;
     int         dpi = 96;
     bool        valid = false;
+
+    // The notification area ("TrayNotifyWnd"): the clock, the chevron, the
+    // volume and network icons. The widget is parked immediately to its left,
+    // which is the only part of the taskbar that stays put — the app buttons
+    // are centred on Windows 11 and move as you open and close windows.
+    RECT        notifyBounds{};
+    bool        hasNotifyArea = false;
 };
 
 // Reads the taskbar's current position, size, edge and DPI.
@@ -75,6 +82,14 @@ void PositionWidget(HWND child,
                     int offsetAlong,
                     int width,
                     int thickness);
+
+// The colour the shell draws taskbar text in.
+//
+// GetSysColor(COLOR_BTNTEXT) is wrong here: it reports the *apps* theme, which
+// is black under the default Windows 11 setup, while the taskbar itself follows
+// the separate system theme and draws white. Reading the theme preference
+// directly is the only way to match what is beside us.
+COLORREF TaskbarTextColor();
 
 // Registers for the "TaskbarCreated" broadcast, which the shell sends to every
 // top-level window when Explorer restarts. That is the moment an embedded

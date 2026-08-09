@@ -34,6 +34,14 @@ constexpr COLORREF kChromaKey = RGB(1, 1, 1);
 // Gap between adjacent grids, in logical pixels.
 constexpr int kMonitorGap = 10;
 
+// Gap between the widget's right edge and the notification area, in logical
+// pixels. Enough to read as a separate thing rather than crowding the chevron.
+constexpr int kNotifyAreaGap = 12;
+
+// Fallback distance from the left edge, used only when the notification area
+// cannot be found.
+constexpr int kLeftEdgeFallback = 8;
+
 // Re-checks the taskbar's position and size. The shell does not notify us when
 // the taskbar moves or resizes, so this is a low-frequency poll; two seconds is
 // far below what anyone notices and costs one FindWindow plus one GetWindowRect.
@@ -200,12 +208,20 @@ LRESULT App::HandleMessage(HWND window, UINT message, WPARAM wParam, LPARAM lPar
         case WM_TIMER:
             if (wParam == kTaskbarPollTimerId) {
                 const TaskbarInfo current = QueryTaskbar();
+                // The notification area's bounds are compared too, not just the
+                // taskbar's: the widget is anchored to its left edge, and that
+                // edge moves whenever an icon appears, the chevron expands, or
+                // the clock changes width. Without this the widget would drift
+                // out of alignment until something else forced a relayout.
                 const bool moved =
                     current.valid &&
                     (current.bounds.left != taskbar_.bounds.left ||
                      current.bounds.top != taskbar_.bounds.top ||
                      current.bounds.right != taskbar_.bounds.right ||
                      current.bounds.bottom != taskbar_.bounds.bottom ||
+                     current.notifyBounds.left != taskbar_.notifyBounds.left ||
+                     current.notifyBounds.top != taskbar_.notifyBounds.top ||
+                     current.hasNotifyArea != taskbar_.hasNotifyArea ||
                      current.dpi != taskbar_.dpi || current.window != taskbar_.window);
 
                 if (moved) {
@@ -295,10 +311,12 @@ void App::OnPaint() {
 void App::EnsureFont() {
     if (font_ && fontDpi_ == dpi_) return;
 
-    // Match the taskbar clock: same family, same weight, so the readout looks
-    // like part of the shell rather than pasted on top of it.
+    // Segoe UI to match the shell, at 12 pt — deliberately a couple of points
+    // larger than the taskbar clock. The clock is read at a glance because you
+    // already know roughly what it says; a latency figure is read properly, and
+    // at 9 pt next to a 6 px grid it was too small to be useful.
     LOGFONTW logical{};
-    logical.lfHeight = -MulDiv(9, dpi_, 72);
+    logical.lfHeight = -MulDiv(12, dpi_, 72);
     logical.lfWeight = FW_NORMAL;
     logical.lfCharSet = DEFAULT_CHARSET;
     logical.lfOutPrecision = OUT_TT_PRECIS;
@@ -326,9 +344,58 @@ void App::Relayout() {
 
     total = std::max(total, 8);
 
+    // Park the widget immediately left of the notification area, recomputed on
+    // every layout because the total width changes with the grid shape and the
+    // taskbar itself can move or resize.
+    //
+    // Anchoring right rather than left is deliberate. On Windows 11 the app
+    // buttons are centred and shift as windows open and close, and the far left
+    // is where the weather and news widget lives — a left-edge offset put the
+    // grid straight on top of it. The notification area is the one region that
+    // stays where it is.
+    offsetAlong_ = ComputeOffsetAlong(total);
+
     PositionWidget(window_, taskbar_, hostMode_, offsetAlong_, total, availableThickness_);
     InvalidateRect(window_, nullptr, FALSE);
     UpdateTooltip();
+}
+
+int App::ComputeOffsetAlong(int widgetWidth) const {
+    const bool horizontal =
+        taskbar_.edge == TaskbarEdge::Top || taskbar_.edge == TaskbarEdge::Bottom;
+
+    if (!taskbar_.valid) return MulDiv(kLeftEdgeFallback, dpi_, 96);
+
+    if (horizontal) {
+        if (!taskbar_.hasNotifyArea) {
+            // No notification area found: fall back to hugging the right edge
+            // of the taskbar, which is still better than the left.
+            const int barWidth = taskbar_.bounds.right - taskbar_.bounds.left;
+            return std::max(0, barWidth - widgetWidth -
+                                   MulDiv(kNotifyAreaGap, dpi_, 96));
+        }
+
+        // Taskbar-relative: the notification area's left edge, minus our width
+        // and a gap. PositionWidget adds the taskbar origin back when floating.
+        const int notifyLeftRelative =
+            taskbar_.notifyBounds.left - taskbar_.bounds.left;
+
+        return std::max(0, notifyLeftRelative - widgetWidth -
+                               MulDiv(kNotifyAreaGap, dpi_, 96));
+    }
+
+    // Docked left or right: the notification area sits at the bottom, so the
+    // widget goes above it.
+    const int barHeight = taskbar_.bounds.bottom - taskbar_.bounds.top;
+
+    if (!taskbar_.hasNotifyArea) {
+        return std::max(0, barHeight - availableThickness_ -
+                               MulDiv(kNotifyAreaGap, dpi_, 96));
+    }
+
+    const int notifyTopRelative = taskbar_.notifyBounds.top - taskbar_.bounds.top;
+    return std::max(0, notifyTopRelative - availableThickness_ -
+                           MulDiv(kNotifyAreaGap, dpi_, 96));
 }
 
 void App::AttachToTaskbar() {
@@ -343,6 +410,9 @@ void App::AttachToTaskbar() {
     availableThickness_ = UsableThickness(taskbar_);
 
     hostMode_ = EmbedInTaskbar(window_, taskbar_);
+    // Relayout() computes the real position; this only ensures the window is
+    // not briefly drawn at the far left before that happens.
+    offsetAlong_ = ComputeOffsetAlong(0);
 
     // Re-apply the colour key after re-parenting. WS_EX_LAYERED survives the
     // style edits in EmbedInTaskbar, but the attributes attached to the layer
@@ -353,11 +423,6 @@ void App::AttachToTaskbar() {
     // This also covers Explorer restarts, which come back through here.
     SetLayeredWindowAttributes(window_, kChromaKey, 0, LWA_COLORKEY);
 
-    // Start a little in from the left edge, clear of the Start button and the
-    // pinned apps in the default Windows 11 layout. The user can move it.
-    if (offsetAlong_ == 0) {
-        offsetAlong_ = MulDiv(8, dpi_, 96);
-    }
 }
 
 void App::OnTaskbarCreated() {

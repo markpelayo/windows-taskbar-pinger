@@ -20,7 +20,7 @@ namespace defaults {
 inline constexpr wchar_t kHost[]          = L"8.8.8.8";
 inline constexpr wchar_t kSuccessHex[]    = L"#2777F8";   // blue
 inline constexpr wchar_t kFailureHex[]    = L"#F03631";   // red
-inline constexpr int     kRows            = 3;
+inline constexpr int     kRows            = 4;
 inline constexpr int     kColumns         = 8;
 inline constexpr int     kCell            = 6;            // logical px at 96 DPI
 inline constexpr int     kGap             = 1;
@@ -40,7 +40,7 @@ inline constexpr int     kPayloadBytes    = 32;
 
 inline constexpr wchar_t kProjectName[]   = L"windows-taskbar-pinger";
 inline constexpr wchar_t kAuthor[]        = L"markpelayo";
-inline constexpr wchar_t kHomepage[]      = L"https://github.com/markpelayo/macos-menubar-pinger";
+inline constexpr wchar_t kHomepage[]      = L"https://github.com/markpelayo/windows-taskbar-pinger";
 inline constexpr wchar_t kVersion[]       = L"1.0.0";
 
 inline const std::vector<int>&    RowChoices();

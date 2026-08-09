@@ -72,6 +72,10 @@ private:
     // Which monitor's grid contains this client-area x coordinate.
     MonitorController* MonitorAtPoint(POINT clientPoint);
 
+    // Distance along the taskbar at which to place the widget, chosen so its
+    // trailing edge sits just before the notification area.
+    int ComputeOffsetAlong(int widgetWidth) const;
+
     void AttachToTaskbar();
     void PersistMonitors();
     void EnsureFont();
