@@ -9,6 +9,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <cwctype>
 
 #include "app.h"
 #include "dialogs.h"
@@ -19,12 +20,12 @@ namespace pinger {
 
 namespace {
 
-// Width reserved for the latency readout, in logical pixels at 96 DPI.
-// Fixed rather than measured so a changing number never reflows the taskbar.
-// Sized for the widest realistic string ("<1 ms" up to "9999 ms") at the
-// 12 pt face the app draws with.
-constexpr int kLatencyTextWidth = 62;
+// Gap between the grid and the latency readout, in logical pixels at 96 DPI.
 constexpr int kLatencyTextGap = 6;
+
+// A couple of pixels past the measured text, so the last glyph is not flush
+// against the notification area.
+constexpr int kLatencyTextPadding = 3;
 
 void AppendItem(HMENU menu, UINT flags, UINT_PTR id, const wchar_t* text) {
     AppendMenuW(menu, flags, id, text);
@@ -87,16 +88,59 @@ void MonitorController::Restart() {
 int MonitorController::DesiredWidth() const {
     int width = metrics_.width;
     if (record_.settings.showLatency) {
-        width += MulDiv(kLatencyTextGap + kLatencyTextWidth, dpi_, 96);
+        width += MulDiv(kLatencyTextGap, dpi_, 96) + latencyWidth_;
     }
     return std::max(1, width);
 }
 
-void MonitorController::Layout(int dpi, int availableThickness) {
+// The readout is measured rather than given a fixed allowance.
+//
+// A fixed worst-case width — wide enough for "9999 ms" — left a large dead gap
+// between a short reading like "5 ms" and the notification area, because the
+// widget's right edge is where the reserved space ends, not where the text
+// does.
+//
+// Measuring the live string exactly would be worse: the widget is anchored by
+// its right edge, so every change in text width shifts the grid sideways, and
+// with a per-second update that is a visible twitch.
+//
+// So the measurement uses a template of the same length with every digit
+// replaced by '8', the widest figure. The width then depends only on the
+// *number of characters*, which changes when a reading crosses 9 to 10 or 99
+// to 100 and not otherwise. Stable in normal use, tight against the tray, and
+// it still fits when the number grows.
+void MonitorController::MeasureLatencyWidth(HFONT font) {
+    if (!font) return;
+
+    const std::wstring text = AverageLatencyText();
+
+    std::wstring templateText = text;
+    for (wchar_t& c : templateText) {
+        if (iswdigit(c)) c = L'8';
+    }
+
+    ScopedWindowDC screen(nullptr, GetDC(nullptr));
+    if (!screen) return;
+
+    SelectGuard fontGuard(screen.get(), font);
+
+    SIZE extent{};
+    if (!GetTextExtentPoint32W(screen.get(), templateText.c_str(),
+                               static_cast<int>(templateText.size()), &extent)) {
+        return;
+    }
+
+    latencyWidth_ = extent.cx + MulDiv(kLatencyTextPadding, dpi_, 96);
+    latencyLength_ = text.size();
+    latencyFont_ = font;
+}
+
+void MonitorController::Layout(int dpi, int availableThickness, HFONT font) {
     dpi_ = dpi > 0 ? dpi : 96;
     availableThickness_ = availableThickness > 0 ? availableThickness
                                                  : defaults::kMaxBarHeight;
     metrics_ = ComputeMetrics(record_.settings, dpi_, availableThickness_);
+    MeasureLatencyWidth(font);
 }
 
 void MonitorController::Paint(HDC dc, const RECT& slot, HFONT font) {
@@ -220,6 +264,16 @@ void MonitorController::CommitSample(const PingResult& result) {
     }
 
     TrimSamples();
+
+    // A reading that has grown or shrunk a digit needs more or less room, so
+    // the widget has to be re-measured and repositioned. Compared by length
+    // rather than value: 5 ms to 6 ms is free, 9 ms to 10 ms is not.
+    if (record_.settings.showLatency && AverageLatencyText().size() != latencyLength_) {
+        if (app_) {
+            app_->Relayout();   // re-measures, resizes and repaints
+            return;
+        }
+    }
 
     // Every packet moves at least one cell, so unlike the macOS version there
     // is nothing to gain from comparing against the last drawn state — the grid

@@ -7,6 +7,25 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [1.0.2] — 2026-08-09
+
+### Fixed
+
+- **A large dead gap appeared between the latency readout and the notification area** whenever
+  **Show average latency** was on. The widget reserved a fixed worst-case width for the text — wide
+  enough for `9999 ms` — and since the widget's right edge is where the *reserved space* ends
+  rather than where the text does, a short reading like `5 ms` left roughly 40 px of nothing before
+  the tray.
+
+  The readout is now measured. Not of the live string, though: the widget is anchored by its right
+  edge, so sizing to the exact text would shift the grid sideways on every change, and at one
+  update a second that is a visible twitch. Instead it measures a template of the same length with
+  each digit replaced by `8`, the widest figure. Width then depends only on the number of
+  characters, so it is stable through `5 ms` → `6 ms` and only re-measures across `9` → `10` or
+  `99` → `100`.
+
 ### Added
 
 - **The widget can be moved along the taskbar.** **Move widget…** in the menu arms dragging — the
@@ -53,7 +72,7 @@ and the grid sits on top of the weather widget.
 
 ### Known issues
 
-- The widget is not draggable; its position is computed rather than chosen.
+- The widget is not draggable; its position is computed rather than chosen. (Added in 1.0.2.)
 - Tested on Windows 11 at 100% scaling with a bottom-docked taskbar. Other versions, scalings,
   taskbar positions and multi-monitor setups are lightly tested at best.
 - If `rows × (cell + spacing)` exceeds the taskbar height, cell height is shrunk to fit and the
@@ -114,6 +133,7 @@ These are deliberate differences, not omissions:
 - **Keyboard shortcuts.** The macOS menu had ⌘L, ⌘D, ⌘S and friends. Context menus opened by
   right-click have no equivalent accelerator context.
 
-[Unreleased]: https://github.com/markpelayo/windows-taskbar-pinger/compare/v1.0.1...HEAD
+[Unreleased]: https://github.com/markpelayo/windows-taskbar-pinger/compare/v1.0.2...HEAD
+[1.0.2]: https://github.com/markpelayo/windows-taskbar-pinger/releases/tag/v1.0.2
 [1.0.1]: https://github.com/markpelayo/windows-taskbar-pinger/releases/tag/v1.0.1
 [1.0.0]: https://github.com/markpelayo/windows-taskbar-pinger/releases/tag/v1.0.0
