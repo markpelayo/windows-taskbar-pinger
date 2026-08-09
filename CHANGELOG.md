@@ -7,7 +7,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-Nothing yet.
+### Internal
+
+- Dependabot now watches the GitHub Actions used by the build workflow and opens a grouped weekly
+  PR when they move. Actions pin a Node runtime in their own metadata and GitHub retires those
+  runtimes on its own schedule, so without this every build eventually prints a deprecation
+  annotation until someone notices. No effect on the binary.
 
 ## [1.0.2] — 2026-08-09
 

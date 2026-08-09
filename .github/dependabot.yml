@@ -1,0 +1,37 @@
+# Keeps the GitHub Actions used by the build workflow current.
+#
+# Why this exists: actions pin a Node runtime in their own metadata, and GitHub
+# retires those runtimes on its own schedule. When that happens every build
+# prints a deprecation annotation until the action is bumped — which is a
+# version number neither the maintainer nor anyone reading the repo should have
+# to track by hand.
+#
+# Dependabot opens a pull request when one of them moves. Because the workflow
+# is the project's only compiler for anyone without Visual Studio, each PR is
+# also self-testing: the build runs against the new version before you merge it,
+# so a broken action shows up as a red check rather than a broken release.
+#
+# Only GitHub Actions is watched. The project itself has no dependencies to
+# update, which is deliberate — see the README.
+
+version: 2
+
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      # Weekly rather than daily: these move slowly and a daily cadence on a
+      # small project is just noise in your inbox.
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 3
+    commit-message:
+      prefix: "ci"
+    labels:
+      - "dependencies"
+    groups:
+      # One PR for all of them rather than four separate ones, since they are
+      # only ever merged together anyway.
+      actions:
+        patterns:
+          - "*"
