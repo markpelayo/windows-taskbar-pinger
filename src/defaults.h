@@ -52,7 +52,7 @@ inline constexpr int     kPayloadBytes    = 32;
 inline constexpr wchar_t kProjectName[]   = L"windows-taskbar-pinger";
 inline constexpr wchar_t kAuthor[]        = L"markpelayo";
 inline constexpr wchar_t kHomepage[]      = L"https://github.com/markpelayo/windows-taskbar-pinger";
-inline constexpr wchar_t kVersion[]       = L"1.2.1";
+inline constexpr wchar_t kVersion[]       = L"1.2.2";
 
 inline const std::vector<int>&    RowChoices();
 inline const std::vector<int>&    ColumnChoices();

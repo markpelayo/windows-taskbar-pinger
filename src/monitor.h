@@ -20,6 +20,13 @@ namespace pinger {
 
 class App;
 
+// True while a context menu is on screen.
+//
+// TrackPopupMenuEx runs its own modal message pump, so posted messages are
+// dispatched while a menu is up — which is unsafe for anything that destroys a
+// MonitorController, since its ShowMenu is still on the stack.
+bool MenuIsOpen();
+
 class MonitorController {
 public:
     MonitorController(App* app, const MonitorRecord& record, HWND host, unsigned index);

@@ -9,6 +9,33 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 Nothing yet.
 
+## [1.2.2] — 2026-08-09
+
+### Fixed
+
+- **The menu still ignored the first click sometimes.** 1.0.4 identified the right cause — a menu
+  needs its owner to be the foreground window — but only half-fixed it by moving ownership to a
+  hidden top-level window. The `SetForegroundWindow` call on that window was itself failing.
+
+  Windows only lets a process take the foreground if it already holds it or received the most recent
+  input event. Neither is reliably true here: the widget is a child of `Shell_TrayWnd`, so clicking
+  it does not activate this process and the foreground stays with whatever you were last using. The
+  call then fails *silently* and the menu opens without focus, which Windows discards. It appeared
+  intermittent because it succeeded whenever we happened to hold foreground rights already — right
+  after using the app, for instance, which is exactly when you would retry and see it work.
+
+  The fix attaches our input queue to the foreground thread for the duration of the call, which
+  satisfies the rule, then detaches immediately.
+
+  Two contributing details went with it: the owner window was 0×0, which some Windows versions will
+  not activate at all, so it is now 1×1 parked off-screen; and the menu now tracks both mouse
+  buttons rather than only the right, since the widget opens it from either.
+
+- **A click while a menu was open could open a second menu inside the first.** `TrackPopupMenuEx`
+  runs its own message pump, so input arriving during a menu is dispatched from inside that call.
+  Nested menus are now refused, and the deferred monitor removal re-posts itself rather than
+  destroying a controller whose `ShowMenu` is still on the stack.
+
 ## [1.2.1] — 2026-08-09
 
 ### Changed
@@ -355,12 +382,14 @@ These are deliberate differences, not omissions:
 - **Keyboard shortcuts.** The macOS menu had ⌘L, ⌘D, ⌘S and friends. Context menus opened by
   right-click have no equivalent accelerator context.
 
-[Unreleased]: https://github.com/markpelayo/windows-taskbar-pinger/compare/v1.2.1...HEAD
+[Unreleased]: https://github.com/markpelayo/windows-taskbar-pinger/compare/v1.2.2...HEAD
+[1.2.2]: https://github.com/markpelayo/windows-taskbar-pinger/releases/tag/v1.2.2
 [1.2.1]: https://github.com/markpelayo/windows-taskbar-pinger/releases/tag/v1.2.1
 [1.2.0]: https://github.com/markpelayo/windows-taskbar-pinger/releases/tag/v1.2.0
 [1.1.1]: https://github.com/markpelayo/windows-taskbar-pinger/releases/tag/v1.1.1
 [1.1.0]: https://github.com/markpelayo/windows-taskbar-pinger/releases/tag/v1.1.0
 [1.0.5]: https://github.com/markpelayo/windows-taskbar-pinger/releases/tag/v1.0.5
+[1.2.2]: https://github.com/markpelayo/windows-taskbar-pinger/releases/tag/v1.2.2
 [1.2.1]: https://github.com/markpelayo/windows-taskbar-pinger/releases/tag/v1.2.1
 [1.2.0]: https://github.com/markpelayo/windows-taskbar-pinger/releases/tag/v1.2.0
 [1.1.1]: https://github.com/markpelayo/windows-taskbar-pinger/releases/tag/v1.1.1

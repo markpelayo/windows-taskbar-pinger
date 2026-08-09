@@ -115,17 +115,22 @@ bool App::Initialise(HINSTANCE instance) {
 
     if (!CreateWidgetWindow()) return false;
 
-    // The hidden top-level window that owns popup menus. Never shown, never
-    // sized — it exists solely to be something SetForegroundWindow will accept,
-    // which a WS_CHILD widget is not. See App::MenuOwner.
+    // The hidden top-level window that owns popup menus and dialogs. It exists
+    // solely to be something SetForegroundWindow will accept, which a WS_CHILD
+    // widget is not. See App::MenuOwner.
+    //
+    // 1x1 and parked far off-screen rather than 0x0 at the origin: a zero-sized
+    // window is a poor candidate for the foreground, and some versions of
+    // Windows will not activate one at all — which would defeat the only reason
+    // it exists.
     menuOwner_ = CreateWindowExW(WS_EX_TOOLWINDOW, kWindowClass, L"Pinger menus",
-                                 WS_POPUP, 0, 0, 0, 0, nullptr, nullptr, instance,
-                                 this);
+                                 WS_POPUP, -32000, -32000, 1, 1, nullptr, nullptr,
+                                 instance, this);
     if (!menuOwner_) return false;
 
-    // Shown, but at zero size and as a tool window, so it stays out of Alt-Tab
-    // and off the taskbar. A window that has never been shown cannot become the
-    // foreground window, which is the whole reason this one exists.
+    // Shown without activating. A window that has never been shown cannot become
+    // the foreground window; WS_EX_TOOLWINDOW plus the off-screen position keep
+    // it out of Alt-Tab, off the taskbar and out of sight.
     ShowWindow(menuOwner_, SW_SHOWNA);
 
     // Registered only now that both windows exist. Registering it earlier left
@@ -1051,6 +1056,14 @@ void App::RemoveMonitor(MonitorController* target) {
 }
 
 void App::RemoveMonitorAt(unsigned) {
+    // TrackPopupMenuEx runs its own message pump, so this posted message can be
+    // dispatched while a ShowMenu is still on the stack — destroying the very
+    // controller whose menu handler asked for the removal. Re-post and wait.
+    if (MenuIsOpen()) {
+        PostMessageW(window_, WM_PINGER_REMOVE, 0, 0);
+        return;
+    }
+
     const std::wstring id = pendingRemovalId_;
     pendingRemovalId_.clear();
 

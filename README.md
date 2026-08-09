@@ -78,7 +78,7 @@ precisely so that cloning and building needs nothing but a compiler.
 
 ## Status
 
-**v1.2.1.** It builds and runs on Windows 11, and the core — grid, pinging, menu, taskbar embedding
+**v1.2.2.** It builds and runs on Windows 11, and the core — grid, pinging, menu, taskbar embedding
 — works.
 
 Testing beyond that is thin. It has been exercised on Windows 11 at 100% scaling with a

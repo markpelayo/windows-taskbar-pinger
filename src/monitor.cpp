@@ -36,6 +36,59 @@ void AppendSeparator(HMENU menu) {
     AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
 }
 
+// Makes `window` the foreground window, working around the foreground lock.
+//
+// Windows only permits a process to take the foreground under narrow
+// conditions — it already owns it, or it received the most recent input event.
+// Neither is reliably true here: the widget is a WS_CHILD of Shell_TrayWnd, so
+// clicking it does not activate our process, and the foreground stays with
+// whatever the user was last using. A plain SetForegroundWindow then fails
+// *silently*, TrackPopupMenu opens a menu that never gains focus, and Windows
+// discards it — which is exactly the "first click does nothing, second one
+// works" symptom, intermittent because it succeeds whenever we happen to hold
+// foreground rights already.
+//
+// Attaching our input queue to the current foreground thread makes the two
+// threads share input state, which satisfies the rule and lets the call
+// through. The attachment is undone immediately; leaving it in place would tie
+// our message processing to another process's.
+bool ForceForeground(HWND window) {
+    if (!window) return false;
+
+    if (SetForegroundWindow(window)) return true;
+
+    const HWND foreground = GetForegroundWindow();
+    if (!foreground) return false;
+
+    const DWORD ourThread = GetCurrentThreadId();
+    const DWORD theirThread = GetWindowThreadProcessId(foreground, nullptr);
+
+    if (theirThread == 0 || theirThread == ourThread) return false;
+
+    bool attached = AttachThreadInput(ourThread, theirThread, TRUE) != FALSE;
+
+    BringWindowToTop(window);
+    const bool ok = SetForegroundWindow(window) != FALSE;
+
+    if (attached) AttachThreadInput(ourThread, theirThread, FALSE);
+    return ok;
+}
+
+// True while a menu is on screen.
+//
+// TrackPopupMenuEx runs its own modal message pump, so a click that arrives
+// while a menu is open is dispatched from inside this call — and without this
+// guard would open a second menu nested inside the first. That also makes the
+// deferred monitor removal unsafe, since it can then be handled while an outer
+// ShowMenu is still on the stack holding `this`.
+bool g_menuIsOpen = false;
+
+}  // namespace
+
+bool MenuIsOpen() { return g_menuIsOpen; }
+
+namespace {
+
 // Attaches a colour swatch to a menu item, so the colour menus show what they
 // mean rather than only naming it.
 void SetItemBitmap(HMENU menu, UINT id, HBITMAP bitmap) {
@@ -629,6 +682,8 @@ HMENU MonitorController::BuildMenu(std::vector<HMENU>* ownedSubmenus) {
 }
 
 void MonitorController::ShowMenu(POINT screenPoint) {
+    if (g_menuIsOpen) return;
+
     std::vector<HMENU> submenus;
     ScopedMenu menu(BuildMenu(&submenus));
 
@@ -655,14 +710,25 @@ void MonitorController::ShowMenu(POINT screenPoint) {
     // must not be able to turn a plain click into a delete.
     if (app_) app_->ClearMenuSelection();
 
-    SetForegroundWindow(owner);
+    // Not a bare SetForegroundWindow: that fails silently from a process the
+    // user has not activated, which is precisely our situation. See
+    // ForceForeground.
+    ForceForeground(owner);
+
+    g_menuIsOpen = true;
 
     // TPM_NONOTIFY is deliberately absent: the owner needs WM_MENUSELECT to
     // capture the highlighted row's rectangle, and WM_MEASUREITEM/WM_DRAWITEM
     // to render the profile rows.
+    //
+    // TPM_LEFTBUTTON as well as TPM_RIGHTBUTTON, so the menu tracks whichever
+    // button the user is holding — the widget opens it from either.
     const int command =
-        TrackPopupMenuEx(menu.get(), TPM_RIGHTBUTTON | TPM_RETURNCMD,
+        TrackPopupMenuEx(menu.get(),
+                         TPM_LEFTBUTTON | TPM_RIGHTBUTTON | TPM_RETURNCMD,
                          screenPoint.x, screenPoint.y, owner, nullptr);
+
+    g_menuIsOpen = false;
 
     // Dismisses the internal menu-mode state Win32 otherwise leaves behind,
     // which would swallow the next click.
