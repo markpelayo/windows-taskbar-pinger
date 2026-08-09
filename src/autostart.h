@@ -1,4 +1,4 @@
-// autostart.h — "Start with Windows".
+// autostart.h — "Run at startup".
 //
 // Implemented as a value under HKCU\...\CurrentVersion\Run.
 //

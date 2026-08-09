@@ -118,7 +118,7 @@ cmake --build build --config Release
 
 ### Start it at login
 
-Right-click the grid and tick **Start with Windows**.
+Right-click the grid and tick **Run at startup**.
 
 That writes a value under `HKEY_CURRENT_USER\...\CurrentVersion\Run`, which needs no administrator
 rights and shows up in Task Manager's **Startup** tab, so it can be turned off from there too. Move
@@ -137,7 +137,7 @@ and if you want to forget your saved monitors and profiles:
 del "%APPDATA%\Pinger\settings.ini"
 ```
 
-If you had **Start with Windows** on, untick it before deleting the folder — or remove the leftover
+If you had **Run at startup** on, untick it before deleting the folder — or remove the leftover
 entry afterwards:
 
 ```bat
@@ -183,7 +183,7 @@ Right-click any grid:
 | **Restore monitor defaults** | Reset this grid to the factory settings |
 | **Duplicate this monitor** | Add another grid with a copy of these settings |
 | **Remove this monitor** | Delete just this grid (disabled when one is left) |
-| **Start with Windows** | Toggle. Adds or removes an `HKEY_CURRENT_USER` Run entry — no admin rights, and visible in Task Manager's Startup tab |
+| **Run at startup** | Toggle. Adds or removes an `HKEY_CURRENT_USER` Run entry — no admin rights, and visible in Task Manager's Startup tab |
 | **Quit Pinger** | |
 
 Every setting persists across launches, per monitor, in `%APPDATA%\Pinger\settings.ini`.

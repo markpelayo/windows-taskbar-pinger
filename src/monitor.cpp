@@ -620,7 +620,7 @@ HMENU MonitorController::BuildMenu(std::vector<HMENU>* ownedSubmenus) {
     // here with it rather than up among the grid's own settings.
     AppendItem(menu,
                MF_STRING | (autostart::IsEnabled() ? MF_CHECKED : MF_UNCHECKED),
-               IDM_TOGGLE_AUTOSTART, L"Start with Windows");
+               IDM_TOGGLE_AUTOSTART, L"Run at startup");
 
     AppendSeparator(menu);
     AppendItem(menu, MF_STRING, IDM_QUIT, L"Quit Pinger");
@@ -967,7 +967,7 @@ void MonitorController::HandleCommand(int command) {
                             L"a shortcut yourself: press Win+R, enter shell:startup, "
                             L"and put a shortcut to Pinger.exe in the folder that "
                             L"opens.",
-                            L"Start with Windows", MB_OK | MB_ICONWARNING);
+                            L"Run at startup", MB_OK | MB_ICONWARNING);
             }
             break;
         }

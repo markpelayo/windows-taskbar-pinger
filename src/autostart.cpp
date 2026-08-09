@@ -1,4 +1,4 @@
-// autostart.cpp — the HKCU Run entry behind "Start with Windows".
+// autostart.cpp — the HKCU Run entry behind "Run at startup".
 
 #include "autostart.h"
 

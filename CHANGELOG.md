@@ -13,7 +13,7 @@ Nothing yet.
 
 ### Added
 
-- **Start with Windows**, a toggle near the bottom of the menu. Previously this meant putting a
+- **Run at startup**, a toggle near the bottom of the menu. Previously this meant putting a
   shortcut in the Startup folder by hand, which the README explained and nobody enjoys.
 
   It writes a value under `HKEY_CURRENT_USER\...\CurrentVersion\Run`. Per-user rather than
