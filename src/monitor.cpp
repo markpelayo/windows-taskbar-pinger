@@ -657,7 +657,13 @@ HMENU MonitorController::BuildMenu(std::vector<HMENU>* ownedSubmenus) {
                     L"Load monitor profile");
     }
 
-    AppendItem(menu, MF_STRING, IDM_RESTORE_DEFAULTS, L"Restore monitor defaults");
+    // Greyed when there is nothing to restore. Everything it would set is
+    // already set, so enabling it would offer an action that does nothing —
+    // and it doubles as a quiet indicator of whether this grid has been
+    // customised at all.
+    const bool atDefaults = s.IsFactoryDefault();
+    AppendItem(menu, MF_STRING | (atDefaults ? MF_GRAYED : MF_ENABLED),
+               IDM_RESTORE_DEFAULTS, L"Restore monitor defaults");
 
     // Every item above acts on this grid alone, which is obvious with one grid
     // on screen and much less so once there are copies of it. "Restore monitor
@@ -666,7 +672,7 @@ HMENU MonitorController::BuildMenu(std::vector<HMENU>* ownedSubmenus) {
     //
     // Shown only when there is more than one monitor: with a single grid the
     // distinction does not exist and the line would be noise.
-    if (monitorCount > 1) {
+    if (monitorCount > 1 && !atDefaults) {
         AppendItem(menu, MF_STRING | MF_GRAYED, 0,
                    L"     (applies to this monitor only, not its copies)");
     }

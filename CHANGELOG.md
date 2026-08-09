@@ -9,6 +9,25 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 Nothing yet.
 
+## [1.4.2] — 2026-08-09
+
+### Changed
+
+- **Restore monitor defaults is greyed out while there is nothing to restore** — that is, while the
+  host, ping frequency, both colours, rows, columns, cell size, spacing, text size and fill
+  direction all still hold their factory values.
+
+  It stops the menu offering an action that would do nothing, and it doubles as a quiet answer to
+  "have I changed anything on this grid?", which previously required checking each submenu in turn.
+
+  The per-grid note added in 1.4.1 is hidden in that state too, since it explains an item that
+  cannot be used.
+
+  The comparison is field by field rather than against a default-constructed copy, so adding a
+  setting in future without extending the check is a compile error rather than a silently wrong
+  answer. The ping interval is compared with a small tolerance because a value read back from the
+  settings file has been through a decimal round trip and need not be bit-identical to the constant.
+
 ## [1.4.1] — 2026-08-09
 
 ### Changed
@@ -457,7 +476,8 @@ These are deliberate differences, not omissions:
 - **Keyboard shortcuts.** The macOS menu had ⌘L, ⌘D, ⌘S and friends. Context menus opened by
   right-click have no equivalent accelerator context.
 
-[Unreleased]: https://github.com/markpelayo/windows-taskbar-pinger/compare/v1.4.1...HEAD
+[Unreleased]: https://github.com/markpelayo/windows-taskbar-pinger/compare/v1.4.2...HEAD
+[1.4.2]: https://github.com/markpelayo/windows-taskbar-pinger/releases/tag/v1.4.2
 [1.4.1]: https://github.com/markpelayo/windows-taskbar-pinger/releases/tag/v1.4.1
 [1.4.0]: https://github.com/markpelayo/windows-taskbar-pinger/releases/tag/v1.4.0
 [1.3.0]: https://github.com/markpelayo/windows-taskbar-pinger/releases/tag/v1.3.0
@@ -467,6 +487,7 @@ These are deliberate differences, not omissions:
 [1.1.1]: https://github.com/markpelayo/windows-taskbar-pinger/releases/tag/v1.1.1
 [1.1.0]: https://github.com/markpelayo/windows-taskbar-pinger/releases/tag/v1.1.0
 [1.0.5]: https://github.com/markpelayo/windows-taskbar-pinger/releases/tag/v1.0.5
+[1.4.2]: https://github.com/markpelayo/windows-taskbar-pinger/releases/tag/v1.4.2
 [1.4.1]: https://github.com/markpelayo/windows-taskbar-pinger/releases/tag/v1.4.1
 [1.4.0]: https://github.com/markpelayo/windows-taskbar-pinger/releases/tag/v1.4.0
 [1.3.0]: https://github.com/markpelayo/windows-taskbar-pinger/releases/tag/v1.3.0

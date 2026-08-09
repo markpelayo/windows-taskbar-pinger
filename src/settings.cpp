@@ -10,6 +10,7 @@
 
 #include <algorithm>
 #include <cstdio>
+#include <cmath>
 #include <cstdlib>
 #include <cwchar>
 #include <cwctype>
@@ -76,6 +77,33 @@ void MonitorSettings::Sanitise() {
     if (!(interval >= defaults::kMinInterval && interval <= defaults::kMaxInterval)) {
         interval = defaults::kInterval;
     }
+}
+
+bool MonitorSettings::IsFactoryDefault() const {
+    COLORREF defaultSuccess = 0;
+    COLORREF defaultFailure = 0;
+    ColorFromHex(defaults::kSuccessHex, &defaultSuccess);
+    ColorFromHex(defaults::kFailureHex, &defaultFailure);
+
+    // The interval is a double, so it is compared with a tolerance rather than
+    // for equality: a value that arrived through the settings file has been
+    // through a decimal round trip and need not be bit-identical to the
+    // constant. A quarter of a millisecond is far below the smallest step the
+    // menu offers.
+    const bool intervalIsDefault =
+        fabs(interval - defaults::kInterval) < 0.00025;
+
+    return host == defaults::kHost &&
+           success == defaultSuccess &&
+           failure == defaultFailure &&
+           rows == defaults::kRows &&
+           columns == defaults::kColumns &&
+           cell == defaults::kCell &&
+           gap == defaults::kGap &&
+           intervalIsDefault &&
+           showLatency == defaults::kShowLatency &&
+           textSize == defaults::kTextSize &&
+           fillVertical == defaults::kFillVertical;
 }
 
 // ------------------------------------------------------------------ interval

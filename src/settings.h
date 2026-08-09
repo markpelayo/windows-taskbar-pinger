@@ -66,6 +66,13 @@ struct MonitorSettings {
 
     // Clamps anything a hand-edited file could have made nonsensical.
     void Sanitise();
+
+    // True when every field still holds its factory value.
+    //
+    // Compared field by field rather than against a default-constructed copy
+    // with operator==, so that adding a setting without extending this is a
+    // compile error rather than a silently wrong answer.
+    bool IsFactoryDefault() const;
 };
 
 // One saved monitor: an identity plus its settings.
