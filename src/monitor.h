@@ -44,13 +44,11 @@ public:
     int DesiredWidth() const;
 
     // Re-measures for the current DPI and available thickness, then repaints.
-    // `font` is the host's cached font, needed to measure the latency text.
-    void Layout(int dpi, int availableThickness, HFONT font);
+    void Layout(int dpi, int availableThickness);
 
     // Paints into the given DC; called from the host window's WM_PAINT.
-    // `slot` is this monitor's share of the client area, and `font` is the
-    // host's cached font — one font is shared by every grid.
-    void Paint(HDC dc, const RECT& slot, HFONT font);
+    // `slot` is this monitor's share of the client area.
+    void Paint(HDC dc, const RECT& slot);
 
     // Handles one settled packet. Applies the opening-packet hold-back rule
     // before anything is drawn.
@@ -76,10 +74,15 @@ private:
 
     std::wstring AverageLatencyText() const;
 
+    // Rebuilds the readout's font when its point size or the DPI changes.
+    // Owned per monitor rather than shared by the app, because the size is a
+    // per-monitor setting like the colours and the grid shape.
+    void EnsureFont();
+
     // Measures the space the readout actually needs, rather than reserving a
     // worst case. See the definition for why this is not simply the width of
     // the current string.
-    void MeasureLatencyWidth(HFONT font);
+    void MeasureLatencyWidth();
     bool HasAverageLatency() const { return latencyCount_ > 0; }
     double AverageLatency() const;
 
@@ -104,7 +107,11 @@ private:
     // "5 ms" becoming "6 ms" changes nothing, "9 ms" becoming "10 ms" does.
     int    latencyWidth_ = 0;
     size_t latencyLength_ = 0;
-    HFONT  latencyFont_ = nullptr;
+
+    // The readout's font, rebuilt only when its point size or the DPI changes.
+    ScopedFont font_;
+    int        fontDpi_ = 0;
+    int        fontSize_ = 0;
 
     // Oldest sample first. Grows to CellCount(), then rolls: drop the oldest,
     // append the newest, so every cell shifts back one position.

@@ -109,8 +109,29 @@ int MonitorController::DesiredWidth() const {
 // *number of characters*, which changes when a reading crosses 9 to 10 or 99
 // to 100 and not otherwise. Stable in normal use, tight against the tray, and
 // it still fits when the number grows.
-void MonitorController::MeasureLatencyWidth(HFONT font) {
-    if (!font) return;
+void MonitorController::EnsureFont() {
+    const int size = record_.settings.textSize;
+    if (font_ && fontDpi_ == dpi_ && fontSize_ == size) return;
+
+    // Segoe UI to match the shell. The taskbar clock is 9 pt; the default here
+    // is 10, and the menu offers 8 to 16.
+    LOGFONTW logical{};
+    logical.lfHeight = -MulDiv(size, dpi_, 72);
+    logical.lfWeight = FW_NORMAL;
+    logical.lfCharSet = DEFAULT_CHARSET;
+    logical.lfOutPrecision = OUT_TT_PRECIS;
+    logical.lfQuality = CLEARTYPE_QUALITY;
+    logical.lfPitchAndFamily = DEFAULT_PITCH | FF_DONTCARE;
+    wcscpy_s(logical.lfFaceName, L"Segoe UI");
+
+    font_.reset(CreateFontIndirectW(&logical));
+    fontDpi_ = dpi_;
+    fontSize_ = size;
+}
+
+void MonitorController::MeasureLatencyWidth() {
+    EnsureFont();
+    if (!font_) return;
 
     const std::wstring text = AverageLatencyText();
 
@@ -122,7 +143,7 @@ void MonitorController::MeasureLatencyWidth(HFONT font) {
     ScopedWindowDC screen(nullptr, GetDC(nullptr));
     if (!screen) return;
 
-    SelectGuard fontGuard(screen.get(), font);
+    SelectGuard fontGuard(screen.get(), font_.get());
 
     SIZE extent{};
     if (!GetTextExtentPoint32W(screen.get(), templateText.c_str(),
@@ -132,18 +153,17 @@ void MonitorController::MeasureLatencyWidth(HFONT font) {
 
     latencyWidth_ = extent.cx + MulDiv(kLatencyTextPadding, dpi_, 96);
     latencyLength_ = text.size();
-    latencyFont_ = font;
 }
 
-void MonitorController::Layout(int dpi, int availableThickness, HFONT font) {
+void MonitorController::Layout(int dpi, int availableThickness) {
     dpi_ = dpi > 0 ? dpi : 96;
     availableThickness_ = availableThickness > 0 ? availableThickness
                                                  : defaults::kMaxBarHeight;
     metrics_ = ComputeMetrics(record_.settings, dpi_, availableThickness_);
-    MeasureLatencyWidth(font);
+    MeasureLatencyWidth();
 }
 
-void MonitorController::Paint(HDC dc, const RECT& slot, HFONT font) {
+void MonitorController::Paint(HDC dc, const RECT& slot) {
     const std::wstring latency =
         record_.settings.showLatency ? AverageLatencyText() : std::wstring();
 
@@ -153,7 +173,7 @@ void MonitorController::Paint(HDC dc, const RECT& slot, HFONT font) {
     const COLORREF textColor = TaskbarTextColor();
 
     renderer_.Paint(dc, slot, record_.settings, metrics_, samples_, latency, textColor,
-                    font, dpi_);
+                    font_.get(), dpi_);
 }
 
 void MonitorController::Invalidate() {
@@ -371,6 +391,26 @@ HMENU MonitorController::BuildMenu(std::vector<HMENU>* ownedSubmenus) {
 
     AppendItem(menu, MF_STRING | (s.showLatency ? MF_CHECKED : MF_UNCHECKED),
                IDM_TOGGLE_LATENCY, L"Show average latency");
+
+    // Directly beneath the toggle it belongs to, and greyed out when the
+    // readout is hidden — there is nothing for it to size then.
+    HMENU textSizes = CreatePopupMenu();
+    ownedSubmenus->push_back(textSizes);
+
+    const auto& sizeChoices = defaults::TextSizeChoices();
+    for (size_t i = 0; i < sizeChoices.size(); ++i) {
+        wchar_t label[32];
+        swprintf(label, 32, L"%d pt%s", sizeChoices[i],
+                 sizeChoices[i] == defaults::kTextSize ? L"  (default)" : L"");
+        AppendItem(textSizes,
+                   MF_STRING | (sizeChoices[i] == s.textSize ? MF_CHECKED : MF_UNCHECKED),
+                   IDM_TEXTSIZE_FIRST + i, label);
+    }
+
+    wchar_t textSizeTitle[64];
+    swprintf(textSizeTitle, 64, L"Latency text size: %d pt", s.textSize);
+    AppendMenuW(menu, MF_POPUP | (s.showLatency ? MF_ENABLED : MF_GRAYED),
+                reinterpret_cast<UINT_PTR>(textSizes), textSizeTitle);
 
     // Colours
     for (int slotIndex = 0; slotIndex < 2; ++slotIndex) {
@@ -598,6 +638,20 @@ void MonitorController::HandleCommand(int command) {
                 PersistSettings();
                 Invalidate();
             }
+        }
+        return;
+    }
+
+    if (command >= IDM_TEXTSIZE_FIRST && command <= IDM_TEXTSIZE_LAST) {
+        const size_t index = static_cast<size_t>(command - IDM_TEXTSIZE_FIRST);
+        const auto& sizeChoices = defaults::TextSizeChoices();
+        if (index < sizeChoices.size()) {
+            s.textSize = sizeChoices[index];
+            s.Sanitise();
+            PersistSettings();
+            // Relayout rebuilds the font, re-measures the readout and resizes
+            // the widget, all of which change together.
+            if (app_) app_->Relayout();
         }
         return;
     }

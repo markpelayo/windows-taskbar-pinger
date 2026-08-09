@@ -98,7 +98,6 @@ private:
 
     void AttachToTaskbar();
     void PersistMonitors();
-    void EnsureFont();
     void UpdateTooltip();
 
     bool AddTrayIcon();
@@ -117,8 +116,6 @@ private:
     // How far along the taskbar the widget sits. Positive from the left edge.
     int         offsetAlong_ = 0;
 
-    ScopedFont  font_;
-    int         fontDpi_ = 0;
 
     // Dragging. `moveMode_` is armed from the menu and cleared when the drag
     // finishes; `dragging_` is true only between the press and the release.

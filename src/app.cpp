@@ -120,7 +120,6 @@ bool App::Initialise(HINSTANCE instance) {
     }
 
     AttachToTaskbar();
-    EnsureFont();
     Relayout();
 
     ShowWindow(window_, SW_SHOWNOACTIVATE);
@@ -331,7 +330,6 @@ LRESULT App::HandleMessage(HWND window, UINT message, WPARAM wParam, LPARAM lPar
                     taskbar_ = current;
                     if (current.dpi != dpi_) {
                         dpi_ = current.dpi;
-                        EnsureFont();
                     }
                     availableThickness_ = UsableThickness(taskbar_);
                     Relayout();
@@ -399,7 +397,7 @@ void App::OnPaint() {
             slot.left = x;
             slot.right = x + monitor->DesiredWidth();
 
-            monitor->Paint(memory.get(), slot, font_.get());
+            monitor->Paint(memory.get(), slot);
 
             x = slot.right + MulDiv(kMonitorGap, dpi_, 96);
         }
@@ -411,36 +409,15 @@ void App::OnPaint() {
     EndPaint(window_, &paint);
 }
 
-void App::EnsureFont() {
-    if (font_ && fontDpi_ == dpi_) return;
-
-    // Segoe UI to match the shell, at 12 pt — deliberately a couple of points
-    // larger than the taskbar clock. The clock is read at a glance because you
-    // already know roughly what it says; a latency figure is read properly, and
-    // at 9 pt next to a 6 px grid it was too small to be useful.
-    LOGFONTW logical{};
-    logical.lfHeight = -MulDiv(12, dpi_, 72);
-    logical.lfWeight = FW_NORMAL;
-    logical.lfCharSet = DEFAULT_CHARSET;
-    logical.lfOutPrecision = OUT_TT_PRECIS;
-    logical.lfQuality = CLEARTYPE_QUALITY;
-    logical.lfPitchAndFamily = DEFAULT_PITCH | FF_DONTCARE;
-    wcscpy_s(logical.lfFaceName, L"Segoe UI");
-
-    font_.reset(CreateFontIndirectW(&logical));
-    fontDpi_ = dpi_;
-}
-
 // -------------------------------------------------------------------- layout
 
 void App::Relayout() {
-    EnsureFont();
 
     int total = 0;
     const int gap = MulDiv(kMonitorGap, dpi_, 96);
 
     for (size_t i = 0; i < monitors_.size(); ++i) {
-        monitors_[i]->Layout(dpi_, availableThickness_, font_.get());
+        monitors_[i]->Layout(dpi_, availableThickness_);
         if (i > 0) total += gap;
         total += monitors_[i]->DesiredWidth();
     }
@@ -573,7 +550,8 @@ void App::OnDpiChanged() {
         availableThickness_ = UsableThickness(taskbar_);
     }
 
-    EnsureFont();
+    // Fonts are rebuilt by each monitor's Layout, which Relayout calls.
+    //
     // The swatch cache is keyed by DPI as well as colour, so entries for the
     // old DPI simply stop being looked up. Clearing here would be wrong: a DPI
     // change can arrive while a menu is open, because TrackPopupMenuEx runs its

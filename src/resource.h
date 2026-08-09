@@ -48,6 +48,9 @@
 #define IDM_GAP_FIRST          41600
 #define IDM_GAP_LAST           41699
 
+#define IDM_TEXTSIZE_FIRST     42000   // + index into TextSizeChoices
+#define IDM_TEXTSIZE_LAST      42099
+
 #define IDM_LOAD_PROFILE_FIRST 41700   // + index into the sorted profile names
 #define IDM_LOAD_PROFILE_LAST  41799
 

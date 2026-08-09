@@ -27,6 +27,13 @@ inline constexpr int     kGap             = 1;
 inline constexpr double  kInterval        = 1.0;          // seconds
 inline constexpr bool    kShowLatency     = true;
 
+// Point size of the latency readout.
+//
+// The taskbar clock is 9 pt. One point above it reads as slightly emphasised
+// without looking oversized next to a 6 px grid — 12 pt, which this started at,
+// was noticeably too large for the bar.
+inline constexpr int     kTextSize        = 10;
+
 // Used only until the real taskbar height is known, and in floating mode.
 inline constexpr int     kMaxBarHeight    = 24;
 
@@ -41,12 +48,13 @@ inline constexpr int     kPayloadBytes    = 32;
 inline constexpr wchar_t kProjectName[]   = L"windows-taskbar-pinger";
 inline constexpr wchar_t kAuthor[]        = L"markpelayo";
 inline constexpr wchar_t kHomepage[]      = L"https://github.com/markpelayo/windows-taskbar-pinger";
-inline constexpr wchar_t kVersion[]       = L"1.0.2";
+inline constexpr wchar_t kVersion[]       = L"1.0.3";
 
 inline const std::vector<int>&    RowChoices();
 inline const std::vector<int>&    ColumnChoices();
 inline const std::vector<int>&    CellChoices();
 inline const std::vector<int>&    GapChoices();
+inline const std::vector<int>&    TextSizeChoices();
 inline const std::vector<double>& IntervalChoices();
 
 inline const std::vector<int>& RowChoices() {
@@ -63,6 +71,10 @@ inline const std::vector<int>& CellChoices() {
 }
 inline const std::vector<int>& GapChoices() {
     static const std::vector<int> v{0, 1, 2, 3};
+    return v;
+}
+inline const std::vector<int>& TextSizeChoices() {
+    static const std::vector<int> v{8, 9, 10, 11, 12, 14, 16};
     return v;
 }
 inline const std::vector<double>& IntervalChoices() {
