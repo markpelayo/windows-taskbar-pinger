@@ -107,29 +107,22 @@ void GridRenderer::Paint(HDC target,
 
     const int columns = std::max(1, settings.columns);
 
-    for (int index = 0; index < count; ++index) {
+    // `position` walks the cells from the origin outward; both fill orders start
+    // at the top-left cell and end at the bottom-right one, differing only in the
+    // path between.
+    for (int position = 0; position < count; ++position) {
         int column = 0;
         int rowFromTop = 0;
 
-        if (settings.fillHorizontal) {
-            // Rows, read like text: left to right along the top row, then down.
-            // The newest sample lands at the bottom right.
-            rowFromTop = index / columns;
-            column = index % columns;
+        if (settings.fillVertical) {
+            // Down the first column, then on to the top of the next.
+            column = position / rows;
+            rowFromTop = position % rows;
         } else {
-            // Columns, the macOS original's order: up from the bottom-left,
-            // then on to the next column. The newest sample lands at the top
-            // right. GDI's y axis grows downward, so a row counted from the
-            // bottom has to be flipped before it is drawn.
-            column = index / rows;
-            const int rowFromBottom = index % rows;
-            rowFromTop = rows - 1 - rowFromBottom;
+            // Across the top row, then down to the next — the way text is read.
+            rowFromTop = position / columns;
+            column = position % columns;
         }
-
-        // Only the mapping from sample index to cell position differs between
-        // the two orders. The sample list, the rolling window and the running
-        // latency average are all untouched — which is why switching direction
-        // does not disturb the average.
 
         RECT cell;
         cell.left = originX + column * (metrics.cellWidth + metrics.gap);
@@ -137,10 +130,20 @@ void GridRenderer::Paint(HDC target,
         cell.right = cell.left + metrics.cellWidth;
         cell.bottom = cell.top + metrics.cellHeight;
 
+        // Newest first.
+        //
+        // The origin cell always holds the latest ping, and each older sample
+        // sits one position further along; the oldest falls off the far end when
+        // there is no room left.
+        //
+        // The samples themselves are still stored oldest-first and still roll the
+        // same way — only the reading direction is reversed here. That is what
+        // keeps the average untouched: it is computed from the same set of
+        // samples regardless of where any of them are drawn.
         HBRUSH brush;
-        if (index < measured) {
-            brush = samples[static_cast<size_t>(index)].reachable ? successBrush_.get()
-                                                                  : failureBrush_.get();
+        if (position < measured) {
+            const Sample& sample = samples[static_cast<size_t>(measured - 1 - position)];
+            brush = sample.reachable ? successBrush_.get() : failureBrush_.get();
         } else {
             brush = emptyBrush_.get();
         }

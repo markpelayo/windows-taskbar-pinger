@@ -543,12 +543,10 @@ HMENU MonitorController::BuildMenu(std::vector<HMENU>* ownedSubmenus) {
 
     // Fill direction, directly beneath the two colour rows it affects.
     //
-    // Named for the direction it selects rather than for the setting behind it,
-    // and the arrow spells the direction out — "horizontal" alone would not say
-    // which corner it starts from, which is the part that actually matters.
-    // Unchecked is the default order, described in the menu reference.
-    AppendItem(menu, MF_STRING | (s.fillHorizontal ? MF_CHECKED : MF_UNCHECKED),
-               IDM_TOGGLE_FILL, L"Fill in rows (top-left → bottom-right)");
+    // Both orders start at the top-left cell and end at the bottom-right one, so
+    // the label only has to name the axis. Unchecked is horizontal, the default.
+    AppendItem(menu, MF_STRING | (s.fillVertical ? MF_CHECKED : MF_UNCHECKED),
+               IDM_TOGGLE_FILL, L"Fill rows vertically");
 
     AppendSeparator(menu);
 
@@ -938,7 +936,7 @@ void MonitorController::HandleCommand(int command) {
             break;
 
         case IDM_TOGGLE_FILL:
-            s.fillHorizontal = !s.fillHorizontal;
+            s.fillVertical = !s.fillVertical;
             PersistSettings();
             // Clears the grid as well, the way "Clear monitor history" does.
             //

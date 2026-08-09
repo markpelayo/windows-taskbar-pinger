@@ -45,7 +45,7 @@ src/main.cpp       entry point, single-instance guard
 src/app.*          host window, layout, tray icon, message loop
 src/monitor.*      one grid: its state, its menu, its per-packet logic
 src/ping.*         ICMP via iphlpapi, one worker thread per monitor
-src/grid.*         GDI rendering and the menu colour swatches
+src/grid.*         GDI rendering, the fill order, and the menu colour swatches
 src/taskbar.*      Shell_TrayWnd embedding, with the floating fallback
 src/settings.*     the model and its INI persistence
 src/dialogs.*      text prompt, confirmation, colour picker

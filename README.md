@@ -34,14 +34,16 @@ Not a replacement for real monitoring — it's a glanceable indicator, and it on
 
 ## How it works
 
-By default cells fill from the **bottom-left upward**, then the next column bottom-to-top, and so
-on. Once the grid is full it becomes a **rolling window**: each new ping lands in the top-right,
-every existing cell shifts back one position, and the oldest sample falls off the bottom-left.
+**The newest ping is always the top-left cell.** Each older sample sits one place further along,
+and the oldest falls off the far end when there is no room left. So the grid reads like a timeline
+running away from the corner: what just happened is where you look, and history trails off behind
+it.
 
-**Fill in rows** in the menu switches this to read like text instead — left to right along the top
-row, then down, with the newest sample at the bottom right. Switching clears the grid, because a
-full one looks identical in either order and the whole point of changing direction is to watch
-where new cells land.
+By default cells run **across the top row, then down to the next** — the way text is read.
+**Fill rows vertically** in the menu changes the path to go down the first column, then on to the
+top of the next. Both start at the top-left cell and end at the bottom-right one; only the route
+differs. Switching clears the grid, because a full one looks identical either way and the point of
+changing direction is to watch where new cells land.
 
 The average round trip across those same visible cells is printed next to the grid, and shown in
 the menu; the readout can be switched off per monitor.
@@ -81,7 +83,7 @@ precisely so that cloning and building needs nothing but a compiler.
 
 ## Status
 
-**v1.2.2. Working well on Windows 11** — daily use, left running, no known outstanding issues.
+**v1.3.0. Working well on Windows 11** — daily use, left running, no known outstanding issues.
 
 Everything in the menu reference below does what it says: the grid, the latency readout, multiple
 monitors, profiles, the taskbar embedding, surviving an Explorer restart, and starting with Windows.
@@ -181,7 +183,7 @@ Right-click any grid:
 | **Latency text size ▸** | 8–16 pt (default 10); greyed out when the readout is off |
 | **Success color ▸** | 10 presets plus **Custom…** (system color picker); default blue |
 | **Failure color ▸** | Same, default red |
-| **Fill in rows (top-left → bottom-right)** | Toggle. Off (default): cells climb a column from the bottom-left, then move to the next column, newest at the top right. On: cells run left to right along the top row, then down, newest at the bottom right. Switching empties the grid, like **Clear monitor history** — a full grid looks the same in both orders, so the new direction is only visible once cells start arriving again |
+| **Fill rows vertically** | Toggle. Off (default): cells run across the top row, then down to the next. On: cells run down the first column, then on to the top of the next. Both start top-left and end bottom-right, and the newest ping is always the top-left cell either way. Switching empties the grid, like **Clear monitor history** |
 | **Rows ▸** | 2–8 (default 4) |
 | **Columns ▸** | 4–32 (default 8) |
 | **Cell size ▸** | 2–12 px (default 6) |

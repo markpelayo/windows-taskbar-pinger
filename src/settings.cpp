@@ -246,8 +246,7 @@ MonitorSettings ReadSettings(const IniSection& section) {
     settings.interval    = ReadDouble(section, L"interval", defaults::kInterval);
     settings.showLatency = ReadBool(section, L"showLatency", defaults::kShowLatency);
     settings.textSize    = ReadInt(section, L"textSize", defaults::kTextSize);
-    settings.fillHorizontal =
-        ReadBool(section, L"fillHorizontal", defaults::kFillHorizontal);
+    settings.fillVertical = ReadBool(section, L"fillVertical", defaults::kFillVertical);
 
     settings.Sanitise();
     return settings;
@@ -279,7 +278,7 @@ void WriteSettings(std::wstring& out, const MonitorSettings& settings) {
     AppendKey(out, L"interval", FormatIntervalRaw(settings.interval));
     AppendKey(out, L"showLatency", settings.showLatency ? L"1" : L"0");
     AppendKey(out, L"textSize", settings.textSize);
-    AppendKey(out, L"fillHorizontal", settings.fillHorizontal ? L"1" : L"0");
+    AppendKey(out, L"fillVertical", settings.fillVertical ? L"1" : L"0");
 }
 
 // Reads a whole file into a byte string. Returns false if it cannot be opened;

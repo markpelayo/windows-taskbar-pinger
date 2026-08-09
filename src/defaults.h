@@ -34,9 +34,9 @@ inline constexpr bool    kShowLatency     = true;
 // was noticeably too large for the bar.
 inline constexpr int     kTextSize        = 10;
 
-// Fill direction. False keeps the macOS original's behaviour: up a column from
-// the bottom-left, then on to the next column.
-inline constexpr bool    kFillHorizontal  = false;
+// Fill direction. False is horizontal: across the top row, then down to the
+// next — the way text is read, and the default.
+inline constexpr bool    kFillVertical    = false;
 
 // Used only until the real taskbar height is known, and in floating mode.
 inline constexpr int     kMaxBarHeight    = 24;
@@ -52,7 +52,7 @@ inline constexpr int     kPayloadBytes    = 32;
 inline constexpr wchar_t kProjectName[]   = L"windows-taskbar-pinger";
 inline constexpr wchar_t kAuthor[]        = L"markpelayo";
 inline constexpr wchar_t kHomepage[]      = L"https://github.com/markpelayo/windows-taskbar-pinger";
-inline constexpr wchar_t kVersion[]       = L"1.2.2";
+inline constexpr wchar_t kVersion[]       = L"1.3.0";
 
 inline const std::vector<int>&    RowChoices();
 inline const std::vector<int>&    ColumnChoices();

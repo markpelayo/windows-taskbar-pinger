@@ -9,6 +9,38 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 Nothing yet.
 
+## [1.3.0] — 2026-08-09
+
+The grid reads differently. Nothing about the measurements changed — same samples, same rolling
+window, same average — but where each one is drawn did, in three related ways.
+
+### Changed
+
+- **The newest ping is now always the first cell,** at the top left. Older samples sit one place
+  further along and the oldest falls off the far end.
+
+  Previously the newest landed at the *end* of the grid and every existing cell shifted back toward
+  the origin, which meant the thing you actually want to look at moved around and the whole grid
+  churned on every packet. Now the corner is the answer to "what just happened", and history trails
+  off behind it.
+
+- **Both fill orders start at the top-left cell and end at the bottom-right one.** The vertical
+  order used to begin at the *bottom* left and climb, inherited from the macOS version where it made
+  sense against a menu bar. Having the two orders start in different corners made switching between
+  them disorienting for no reason.
+
+- **Horizontal is now the default** — across the top row, then down to the next, the way text is
+  read. The menu item is correspondingly inverted and renamed to **Fill rows vertically**, which
+  names the axis rather than describing a path, now that both paths share their endpoints.
+
+  Existing settings files carry a `fillHorizontal` key that no longer exists; it is ignored and
+  everyone gets the new default. Anyone who preferred columns can tick the toggle once.
+
+### Unchanged
+
+- The average latency, the reachability percentage and the rolling window are computed from the same
+  set of samples as before. Only the mapping from sample to cell position moved.
+
 ## [1.2.2] — 2026-08-09
 
 ### Fixed
@@ -382,13 +414,15 @@ These are deliberate differences, not omissions:
 - **Keyboard shortcuts.** The macOS menu had ⌘L, ⌘D, ⌘S and friends. Context menus opened by
   right-click have no equivalent accelerator context.
 
-[Unreleased]: https://github.com/markpelayo/windows-taskbar-pinger/compare/v1.2.2...HEAD
+[Unreleased]: https://github.com/markpelayo/windows-taskbar-pinger/compare/v1.3.0...HEAD
+[1.3.0]: https://github.com/markpelayo/windows-taskbar-pinger/releases/tag/v1.3.0
 [1.2.2]: https://github.com/markpelayo/windows-taskbar-pinger/releases/tag/v1.2.2
 [1.2.1]: https://github.com/markpelayo/windows-taskbar-pinger/releases/tag/v1.2.1
 [1.2.0]: https://github.com/markpelayo/windows-taskbar-pinger/releases/tag/v1.2.0
 [1.1.1]: https://github.com/markpelayo/windows-taskbar-pinger/releases/tag/v1.1.1
 [1.1.0]: https://github.com/markpelayo/windows-taskbar-pinger/releases/tag/v1.1.0
 [1.0.5]: https://github.com/markpelayo/windows-taskbar-pinger/releases/tag/v1.0.5
+[1.3.0]: https://github.com/markpelayo/windows-taskbar-pinger/releases/tag/v1.3.0
 [1.2.2]: https://github.com/markpelayo/windows-taskbar-pinger/releases/tag/v1.2.2
 [1.2.1]: https://github.com/markpelayo/windows-taskbar-pinger/releases/tag/v1.2.1
 [1.2.0]: https://github.com/markpelayo/windows-taskbar-pinger/releases/tag/v1.2.0
