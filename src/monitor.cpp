@@ -453,6 +453,15 @@ HMENU MonitorController::BuildMenu(std::vector<HMENU>* ownedSubmenus) {
                          &info);
     }
 
+    // Fill direction, directly beneath the two colour rows it affects.
+    //
+    // Named for the direction it selects rather than for the setting behind it,
+    // and the arrow spells the direction out — "horizontal" alone would not say
+    // which corner it starts from, which is the part that actually matters.
+    // Unchecked is the default order, described in the menu reference.
+    AppendItem(menu, MF_STRING | (s.fillHorizontal ? MF_CHECKED : MF_UNCHECKED),
+               IDM_TOGGLE_FILL, L"Fill in rows (top-left → bottom-right)");
+
     AppendSeparator(menu);
 
     // Grid shape. Four near-identical numeric submenus.
@@ -806,6 +815,15 @@ void MonitorController::HandleCommand(int command) {
             s.showLatency = !s.showLatency;
             PersistSettings();
             if (app_) app_->Relayout();
+            break;
+
+        case IDM_TOGGLE_FILL:
+            s.fillHorizontal = !s.fillHorizontal;
+            PersistSettings();
+            // Only the paint order changes — same cells, same rolling window,
+            // same average — so a repaint is all that is needed. The history
+            // stays put and simply re-flows into the new direction.
+            Invalidate();
             break;
 
         case IDM_SUCCESS_CUSTOM:

@@ -221,6 +221,8 @@ MonitorSettings ReadSettings(const IniSection& section) {
     settings.interval    = ReadDouble(section, L"interval", defaults::kInterval);
     settings.showLatency = ReadBool(section, L"showLatency", defaults::kShowLatency);
     settings.textSize    = ReadInt(section, L"textSize", defaults::kTextSize);
+    settings.fillHorizontal =
+        ReadBool(section, L"fillHorizontal", defaults::kFillHorizontal);
 
     settings.Sanitise();
     return settings;
@@ -237,6 +239,7 @@ void WriteSettings(std::wostringstream& out, const MonitorSettings& settings) {
     out << L"interval=" << FormatIntervalRaw(settings.interval) << L"\n";
     out << L"showLatency=" << (settings.showLatency ? L"1" : L"0") << L"\n";
     out << L"textSize=" << settings.textSize << L"\n";
+    out << L"fillHorizontal=" << (settings.fillHorizontal ? L"1" : L"0") << L"\n";
 }
 
 std::wstring DirectoryPath() {

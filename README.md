@@ -31,9 +31,13 @@ Not a replacement for real monitoring — it's a glanceable indicator, and it on
 
 ## How it works
 
-Cells fill from the **bottom-left upward**, then the next column bottom-to-top, and so on. Once the
-grid is full it becomes a **rolling window**: each new ping lands in the top-right, every existing
-cell shifts back one position, and the oldest sample falls off the bottom-left.
+By default cells fill from the **bottom-left upward**, then the next column bottom-to-top, and so
+on. Once the grid is full it becomes a **rolling window**: each new ping lands in the top-right,
+every existing cell shifts back one position, and the oldest sample falls off the bottom-left.
+
+**Fill in rows** in the menu switches this to read like text instead — left to right along the top
+row, then down, with the newest sample at the bottom right. Only the paint order changes; the same
+cells hold the same samples, so the rolling window and the average latency are unaffected.
 
 The average round trip across those same visible cells is printed next to the grid, and shown in
 the menu; the readout can be switched off per monitor.
@@ -73,7 +77,7 @@ precisely so that cloning and building needs nothing but a compiler.
 
 ## Status
 
-**v1.0.4.** It builds and runs on Windows 11, and the core — grid, pinging, menu, taskbar embedding
+**v1.0.5.** It builds and runs on Windows 11, and the core — grid, pinging, menu, taskbar embedding
 — works.
 
 Testing beyond that is thin. It has been exercised on Windows 11 at 100% scaling with a
@@ -150,6 +154,7 @@ Right-click any grid:
 | **Latency text size ▸** | 8–16 pt (default 10); greyed out when the readout is off |
 | **Success color ▸** | 10 presets plus **Custom…** (system color picker); default blue |
 | **Failure color ▸** | Same, default red |
+| **Fill in rows (top-left → bottom-right)** | Toggle. Off (default): cells climb a column from the bottom-left, then move to the next column, newest at the top right. On: cells run left to right along the top row, then down, newest at the bottom right. Only the paint order changes — cell count, rolling window and average latency are identical either way |
 | **Rows ▸** | 2–8 (default 4) |
 | **Columns ▸** | 4–32 (default 8) |
 | **Cell size ▸** | 2–12 px (default 6) |

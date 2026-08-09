@@ -107,12 +107,31 @@ void GridRenderer::Paint(HDC target,
     const int count = settings.CellCount();
     const int measured = static_cast<int>(samples.size());
 
+    const int columns = std::max(1, settings.columns);
+
     for (int index = 0; index < count; ++index) {
-        // Advance a column every `rows` samples, filling upward within it.
-        const int column = index / rows;
-        const int rowFromBottom = index % rows;
-        // GDI's y axis grows downward, so the bottom row is drawn last.
-        const int rowFromTop = rows - 1 - rowFromBottom;
+        int column = 0;
+        int rowFromTop = 0;
+
+        if (settings.fillHorizontal) {
+            // Rows, read like text: left to right along the top row, then down.
+            // The newest sample lands at the bottom right.
+            rowFromTop = index / columns;
+            column = index % columns;
+        } else {
+            // Columns, the macOS original's order: up from the bottom-left,
+            // then on to the next column. The newest sample lands at the top
+            // right. GDI's y axis grows downward, so a row counted from the
+            // bottom has to be flipped before it is drawn.
+            column = index / rows;
+            const int rowFromBottom = index % rows;
+            rowFromTop = rows - 1 - rowFromBottom;
+        }
+
+        // Only the mapping from sample index to cell position differs between
+        // the two orders. The sample list, the rolling window and the running
+        // latency average are all untouched — which is why switching direction
+        // does not disturb the average.
 
         RECT cell;
         cell.left = originX + column * (metrics.cellWidth + metrics.gap);
