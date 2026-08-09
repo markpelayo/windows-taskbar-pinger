@@ -57,5 +57,9 @@
 #define IDM_SAVE_PROFILE_FIRST 41800   // overwrite an existing profile
 #define IDM_SAVE_PROFILE_LAST  41899
 
-#define IDM_DEL_PROFILE_FIRST  41900   // delete a profile
+// Deleting a profile is no longer its own command. The dismiss glyph on an
+// owner-drawn Load row reuses that row's IDM_LOAD_PROFILE_* id, and where the
+// click landed decides whether it meant load or delete. The range is kept
+// reserved so these ids are never handed to something else.
+#define IDM_DEL_PROFILE_FIRST  41900
 #define IDM_DEL_PROFILE_LAST   41999

@@ -533,30 +533,30 @@ HMENU MonitorController::BuildMenu(std::vector<HMENU>* ownedSubmenus) {
     // macOS put an X button on each row via a custom NSView. Win32 menu items
     // cannot hold child controls, so deletion is its own submenu instead —
     // the same capability, one extra level down.
-    HMENU loadMenu = CreatePopupMenu();
-    ownedSubmenus->push_back(loadMenu);
-
     if (profileNames.empty()) {
-        AppendItem(loadMenu, MF_STRING | MF_GRAYED, 0, L"No saved profiles");
+        // Greyed out with no submenu at all. Offering a submenu that only says
+        // "No saved profiles" makes the user travel to find out there is
+        // nothing there; a disabled item says the same thing up front.
+        AppendItem(menu, MF_STRING | MF_GRAYED, 0, L"Load monitor profile");
     } else {
+        HMENU loadMenu = CreatePopupMenu();
+        ownedSubmenus->push_back(loadMenu);
+
+        // Owner-drawn so each row can carry its own ✕, the way the macOS
+        // version's custom row view did. The item data is the index into the
+        // name list the app draws from.
+        if (app_) app_->SetProfileMenuNames(profileNames);
+
         for (size_t i = 0; i < profileNames.size() && i < 100; ++i) {
-            AppendItem(loadMenu, MF_STRING, IDM_LOAD_PROFILE_FIRST + i,
-                       profileNames[i].c_str());
+            // Item data is the index plus one: zero would be indistinguishable
+            // from "no data set" if another owner-draw item is ever added.
+            AppendMenuW(loadMenu, MF_OWNERDRAW, IDM_LOAD_PROFILE_FIRST + i,
+                        reinterpret_cast<LPCWSTR>(static_cast<ULONG_PTR>(i + 1)));
         }
 
-        AppendSeparator(loadMenu);
-
-        HMENU deleteMenu = CreatePopupMenu();
-        ownedSubmenus->push_back(deleteMenu);
-        for (size_t i = 0; i < profileNames.size() && i < 100; ++i) {
-            AppendItem(deleteMenu, MF_STRING, IDM_DEL_PROFILE_FIRST + i,
-                       profileNames[i].c_str());
-        }
-        AppendMenuW(loadMenu, MF_POPUP, reinterpret_cast<UINT_PTR>(deleteMenu),
-                    L"Delete profile");
+        AppendMenuW(menu, MF_POPUP, reinterpret_cast<UINT_PTR>(loadMenu),
+                    L"Load monitor profile");
     }
-    AppendMenuW(menu, MF_POPUP, reinterpret_cast<UINT_PTR>(loadMenu),
-                L"Load monitor profile");
 
     AppendItem(menu, MF_STRING, IDM_RESTORE_DEFAULTS, L"Restore monitor defaults");
 
@@ -590,17 +590,31 @@ void MonitorController::ShowMenu(POINT screenPoint) {
         return;
     }
 
-    // TrackPopupMenu needs a foreground window or the menu will not dismiss when
-    // the user clicks away. The widget is a child of the taskbar and never takes
-    // focus, so this is required rather than merely polite.
-    SetForegroundWindow(window_);
+    // Menus are owned by the app's hidden top-level window, not by the widget.
+    //
+    // TrackPopupMenu requires its owner to be the foreground window, and
+    // SetForegroundWindow silently fails on a WS_CHILD — which the widget is,
+    // being parented into the taskbar. That failure is what made the first
+    // click do nothing and only the second open the menu.
+    HWND owner = app_ ? app_->MenuOwner() : window_;
+    if (!owner) owner = window_;
 
+    // Start from a clean slate: a row rectangle captured by a previous menu
+    // must not be able to turn a plain click into a delete.
+    if (app_) app_->ClearMenuSelection();
+
+    SetForegroundWindow(owner);
+
+    // TPM_NONOTIFY is deliberately absent: the owner needs WM_MENUSELECT to
+    // capture the highlighted row's rectangle, and WM_MEASUREITEM/WM_DRAWITEM
+    // to render the profile rows.
     const int command =
-        TrackPopupMenuEx(menu.get(), TPM_RIGHTBUTTON | TPM_RETURNCMD | TPM_NONOTIFY,
-                         screenPoint.x, screenPoint.y, window_, nullptr);
+        TrackPopupMenuEx(menu.get(), TPM_RIGHTBUTTON | TPM_RETURNCMD,
+                         screenPoint.x, screenPoint.y, owner, nullptr);
 
-    // Dismiss the invisible menu-owner state Win32 leaves behind.
-    PostMessageW(window_, WM_NULL, 0, 0);
+    // Dismisses the internal menu-mode state Win32 otherwise leaves behind,
+    // which would swallow the next click.
+    PostMessageW(owner, WM_NULL, 0, 0);
 
     // Every submenu here was attached with MF_POPUP, so the ScopedMenu above
     // destroys the whole tree when it goes out of scope.
@@ -694,6 +708,22 @@ void MonitorController::HandleCommand(int command) {
 
     if (command >= IDM_LOAD_PROFILE_FIRST && command <= IDM_LOAD_PROFILE_LAST) {
         const size_t index = static_cast<size_t>(command - IDM_LOAD_PROFILE_FIRST);
+
+        // One command id, two meanings, decided by where in the row the click
+        // landed. Menus report only the item, so the app captured the row's
+        // screen rect while it was still highlighted.
+        if (app_ && app_->LastSelectionHitDeleteGlyph()) {
+            if (index < profileNames.size()) {
+                const std::wstring& name = profileNames[index];
+                if (Confirm(window_, L"Delete “" + name + L"”?",
+                            L"The saved profile is removed. Monitors currently using "
+                            L"those settings keep them — only the profile goes away.")) {
+                    profiles::Delete(name);
+                }
+            }
+            return;
+        }
+
         if (index < profileNames.size()) {
             MonitorSettings loaded;
             if (profiles::Snapshot(profileNames[index], &loaded)) {
@@ -715,19 +745,6 @@ void MonitorController::HandleCommand(int command) {
             if (Confirm(window_, L"Overwrite “" + name + L"”?",
                         L"Replace that profile with this monitor's current settings?")) {
                 profiles::Save(name, s);
-            }
-        }
-        return;
-    }
-
-    if (command >= IDM_DEL_PROFILE_FIRST && command <= IDM_DEL_PROFILE_LAST) {
-        const size_t index = static_cast<size_t>(command - IDM_DEL_PROFILE_FIRST);
-        if (index < profileNames.size()) {
-            const std::wstring& name = profileNames[index];
-            if (Confirm(window_, L"Delete “" + name + L"”?",
-                        L"The saved profile is removed. Monitors currently using "
-                        L"those settings keep them — only the profile goes away.")) {
-                profiles::Delete(name);
             }
         }
         return;

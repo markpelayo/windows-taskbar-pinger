@@ -65,6 +65,28 @@ public:
     // Back to the computed position beside the notification area.
     void ResetWidgetPosition();
 
+    // The window that owns popup menus.
+    //
+    // Not the widget itself. TrackPopupMenu needs its owner to be the
+    // foreground window or the menu will not take focus, and SetForegroundWindow
+    // silently fails on a WS_CHILD — which the widget is, being parented into
+    // the taskbar. The symptom is a menu that ignores the first click and only
+    // opens on the second. So menus are owned by this hidden top-level window,
+    // which can legitimately be foregrounded.
+    HWND MenuOwner() const { return menuOwner_; }
+
+    // Registers the profile names an owner-drawn menu is about to display, so
+    // the draw handler can find the text by item index.
+    void SetProfileMenuNames(std::vector<std::wstring> names);
+
+    // True when the selection that just closed a menu landed on the delete
+    // glyph at the right of a profile row rather than on the row itself.
+    bool LastSelectionHitDeleteGlyph() const;
+
+    // Forgets any captured row rectangle. Called before showing a menu so a
+    // rect left over from a previous one cannot be mistaken for this one's.
+    void ClearMenuSelection();
+
 private:
     static LRESULT CALLBACK WindowProc(HWND window, UINT message, WPARAM wParam,
                                        LPARAM lParam);
@@ -104,8 +126,26 @@ private:
     void RemoveTrayIcon();
     void ShowTrayMenu(POINT screenPoint);
 
+    void OnMeasureProfileItem(MEASUREITEMSTRUCT* measure);
+    void OnDrawProfileItem(DRAWITEMSTRUCT* draw);
+    void OnMenuSelect(WPARAM wParam, LPARAM lParam);
+    HFONT MenuFont();
+
     HINSTANCE instance_ = nullptr;
     HWND      window_ = nullptr;
+
+    // See MenuOwner().
+    HWND menuOwner_ = nullptr;
+
+    // Names backing the owner-drawn profile rows, indexed by item data.
+    std::vector<std::wstring> profileMenuNames_;
+
+    // Screen rect of the row highlighted when a menu closed, captured from
+    // WM_MENUSELECT because the menu is gone by the time the command arrives.
+    RECT lastMenuItemRect_{};
+    bool lastMenuItemValid_ = false;
+
+    ScopedFont menuFont_;
 
     std::vector<std::unique_ptr<MonitorController>> monitors_;
 
