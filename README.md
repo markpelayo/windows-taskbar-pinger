@@ -1,8 +1,5 @@
 # windows-taskbar-pinger
 
-<img width="387" height="87" alt="image" src="https://github.com/user-attachments/assets/a7864783-1de8-4370-a64e-a57ecce9870a" />
-
-
 [![build](https://github.com/markpelayo/windows-taskbar-pinger/actions/workflows/build.yml/badge.svg)](https://github.com/markpelayo/windows-taskbar-pinger/actions/workflows/build.yml)
 ![Platform: Windows 10/11](https://img.shields.io/badge/platform-Windows%2010%2F11-lightgrey)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
@@ -10,7 +7,12 @@
 A tiny Windows taskbar app that pings a host and draws the result as a live grid of colored cells —
 so you can tell at a glance whether your connection is healthy, flaky, or gone.
 
+<img width="387" height="87" alt="image" src="https://github.com/user-attachments/assets/a7864783-1de8-4370-a64e-a57ecce9870a" />
+
 Each cell is one ping: **blue = reply, red = no reply, dim = not measured yet.**
+
+<img width="129" height="51" alt="image" src="https://github.com/user-attachments/assets/aee3935c-8a19-444b-8519-2c23672ec30f" />
+
 
 This is a port of [macos-menubar-pinger](https://github.com/markpelayo/macos-menubar-pinger),
 which was itself a macOS port of the idea behind the old
