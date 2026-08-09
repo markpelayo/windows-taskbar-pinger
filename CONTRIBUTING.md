@@ -49,6 +49,7 @@ src/grid.*         GDI rendering and the menu colour swatches
 src/taskbar.*      Shell_TrayWnd embedding, with the floating fallback
 src/settings.*     the model and its INI persistence
 src/dialogs.*      text prompt, confirmation, colour picker
+src/autostart.*    the HKCU Run entry behind "Run at startup"
 src/raii.h         scoped handle wrappers — read this before touching GDI
 src/defaults.h     factory settings and the values the menus offer
 ```
@@ -77,6 +78,27 @@ This is re-armed on every session, not just the first — see `MonitorController
 **Ping worker threads post results by index.** Monitor indices are renumbered when one is removed,
 and `MonitorController::SetIndex` forwards that to the session. Getting this wrong causes one grid
 to freeze and another to display someone else's host, which is not obvious from a quick test.
+
+**Everything a ping worker touches lives in a refcounted `PingShared`,** not in `PingSession`
+itself. That is what makes it safe for `Stop()` to give up waiting on a wedged worker: the thread
+co-owns the block, so it can never dereference freed memory. Do not move worker-visible state back
+onto the session object.
+
+**Menus and dialogs are owned by `App::MenuOwner()`, never by the widget.** The widget is a
+`WS_CHILD` of `Shell_TrayWnd`, and a modal dialog disables its owner's top-level ancestor — which
+would be the taskbar. `ForceForeground` in `monitor.cpp` exists because `SetForegroundWindow` fails
+from a process the user has not activated, and clicking a child of the taskbar does not activate
+this one; the input-queue attachment is what makes it succeed. Removing it brings back the
+"first click does nothing" bug.
+
+**`TrackPopupMenuEx` runs its own message pump.** Anything posted to the widget can be dispatched
+while a menu is open, which is why `MenuIsOpen()` guards both nested menus and the deferred monitor
+removal.
+
+**Nothing may be allocated on a repaint.** Brushes, fonts, the back-buffer bitmap and the swatch
+cache are all built once and reused; the theme colour is cached rather than read from the registry.
+A process is capped at 10,000 GDI handles, so one leaked object per redraw kills the app in under
+three hours.
 
 ## Reporting a bug
 

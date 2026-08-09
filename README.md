@@ -271,6 +271,11 @@ Expect a few MB of RSS and effectively no CPU between packets.
 - **A dragged position is anchored to the taskbar's right edge**, not to the notification area. It
   survives a resolution change, but tray icons appearing will encroach on it. Automatic placement
   (the default) does not have this problem.
+- **Grid settings are per monitor; the widget's position and the startup entry are not.** Colours,
+  size, fill direction and text size belong to one grid. Where the widget sits and whether it runs
+  at startup apply to the whole app, even though both are reached from a grid's menu.
+- **Only one instance runs at a time.** A second launch exits silently rather than stacking a
+  duplicate widget into the taskbar.
 
 ## Troubleshooting
 
@@ -289,8 +294,17 @@ and both cells are drawn.
 **"Windows protected your PC" on launch.** SmartScreen flags unsigned executables. Click **More
 info → Run anyway**, or build it yourself — code you compiled locally isn't flagged.
 
-**It vanished after Explorer crashed.** It should re-attach itself within a second. If it doesn't,
-quit from the notification icon and start it again.
+**It vanished after Explorer crashed.** It rebuilds itself when the shell comes back, normally
+within a second or two. If Explorer never returns, quit from the notification icon and start it
+again.
+
+**The menu ignores a click.** Fixed in 1.2.2. Earlier builds only opened the menu when this process
+happened to hold foreground rights, which made it look random — clicking a second time worked
+because the first click granted them. Update if you are on 1.2.1 or older.
+
+**The readout says `— ms`.** No reply has been measured yet in the cells currently on screen. It
+appears at launch, after **Clear monitor history**, and after switching fill direction, and goes
+away with the first successful ping.
 
 ## Licensing note
 
