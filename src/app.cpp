@@ -141,6 +141,81 @@ int App::Run() {
 
 void App::RequestQuit() { PostQuitMessage(0); }
 
+// -------------------------------------------------------------------- moving
+
+void App::BeginMoveMode() {
+    moveMode_ = true;
+
+    // The cursor only updates on the next mouse move, so nudge it now — this is
+    // the sole feedback that the mode is armed.
+    POINT cursor{};
+    if (GetCursorPos(&cursor)) SetCursorPos(cursor.x, cursor.y);
+}
+
+void App::ResetWidgetPosition() {
+    WidgetPlacement placement;
+    placement.manual = false;
+    placement.offsetFromRight = 0;
+    store::PersistPlacement(placement);
+
+    moveMode_ = false;
+    dragging_ = false;
+    Relayout();
+}
+
+bool App::OnDragButtonDown() {
+    if (!moveMode_ || dragging_) return false;
+    if (!GetCursorPos(&dragStart_)) return false;
+
+    dragging_ = true;
+    dragStartOffset_ = offsetAlong_;
+    SetCapture(window_);
+    return true;
+}
+
+bool App::OnDragMouseMove() {
+    if (!dragging_) return false;
+
+    POINT cursor{};
+    if (!GetCursorPos(&cursor)) return true;
+
+    const bool horizontal = TaskbarIsHorizontal();
+    const int delta = horizontal ? (cursor.x - dragStart_.x) : (cursor.y - dragStart_.y);
+
+    const int barLength = horizontal ? (taskbar_.bounds.right - taskbar_.bounds.left)
+                                     : (taskbar_.bounds.bottom - taskbar_.bounds.top);
+    const int extent = horizontal ? lastTotalWidth_ : availableThickness_;
+
+    offsetAlong_ = std::clamp(dragStartOffset_ + delta, 0, std::max(0, barLength - extent));
+
+    PositionWidget(window_, taskbar_, hostMode_, offsetAlong_, lastTotalWidth_,
+                   availableThickness_);
+    return true;
+}
+
+bool App::OnDragButtonUp() {
+    if (!dragging_) return false;
+
+    ReleaseCapture();
+    dragging_ = false;
+    moveMode_ = false;   // one drag per arming
+
+    const bool horizontal = TaskbarIsHorizontal();
+    const int barLength = horizontal ? (taskbar_.bounds.right - taskbar_.bounds.left)
+                                     : (taskbar_.bounds.bottom - taskbar_.bounds.top);
+    const int extent = horizontal ? lastTotalWidth_ : availableThickness_;
+
+    // Convert back to a DPI-independent distance from the trailing edge.
+    const int fromEnd = barLength - offsetAlong_ - extent;
+
+    WidgetPlacement placement;
+    placement.manual = true;
+    placement.offsetFromRight = MulDiv(std::max(0, fromEnd), 96, dpi_);
+    store::PersistPlacement(placement);
+
+    return true;
+}
+
 // -------------------------------------------------------------------- window
 
 LRESULT CALLBACK App::WindowProc(HWND window, UINT message, WPARAM wParam,
@@ -197,8 +272,36 @@ LRESULT App::HandleMessage(HWND window, UINT message, WPARAM wParam, LPARAM lPar
             }
             return 0;
 
+        case WM_LBUTTONDOWN:
+            if (OnDragButtonDown()) return 0;
+            return 0;
+
+        case WM_MOUSEMOVE:
+            if (OnDragMouseMove()) return 0;
+            return 0;
+
+        case WM_SETCURSOR:
+            // The only visible sign that move mode is armed.
+            if (moveMode_ || dragging_) {
+                SetCursor(LoadCursorW(nullptr,
+                                      TaskbarIsHorizontal() ? IDC_SIZEWE : IDC_SIZENS));
+                return TRUE;
+            }
+            break;
+
+        case WM_CAPTURECHANGED:
+            // Something took the mouse away mid-drag — a shell menu, a lock
+            // screen. Commit where it currently sits rather than snapping back.
+            // OnDragButtonUp clears the flags itself, so it must be called
+            // before they are touched.
+            OnDragButtonUp();
+            return 0;
+
         case WM_RBUTTONUP:
         case WM_LBUTTONUP: {
+            // A release that ends a drag must not also open the menu.
+            if (OnDragButtonUp()) return 0;
+
             POINT cursor{};
             GetCursorPos(&cursor);
             OnRightClick(cursor);
@@ -353,18 +456,43 @@ void App::Relayout() {
     // is where the weather and news widget lives — a left-edge offset put the
     // grid straight on top of it. The notification area is the one region that
     // stays where it is.
-    offsetAlong_ = ComputeOffsetAlong(total);
+    lastTotalWidth_ = total;
+
+    // A drag in progress owns the position until the button comes up; letting a
+    // ping-driven relayout recompute it mid-drag would make the widget fight
+    // the cursor.
+    if (!dragging_) {
+        offsetAlong_ = ComputeOffsetAlong(total);
+    }
 
     PositionWidget(window_, taskbar_, hostMode_, offsetAlong_, total, availableThickness_);
     InvalidateRect(window_, nullptr, FALSE);
     UpdateTooltip();
 }
 
+bool App::TaskbarIsHorizontal() const {
+    return taskbar_.edge == TaskbarEdge::Top || taskbar_.edge == TaskbarEdge::Bottom;
+}
+
 int App::ComputeOffsetAlong(int widgetWidth) const {
-    const bool horizontal =
-        taskbar_.edge == TaskbarEdge::Top || taskbar_.edge == TaskbarEdge::Bottom;
+    const bool horizontal = TaskbarIsHorizontal();
 
     if (!taskbar_.valid) return MulDiv(kLeftEdgeFallback, dpi_, 96);
+
+    // A position the user dragged to wins over the computed one. Stored as a
+    // distance from the taskbar's trailing edge, so it holds through a
+    // resolution change.
+    const WidgetPlacement& placement = store::Document().placement;
+    if (placement.manual) {
+        const int barLength = horizontal ? (taskbar_.bounds.right - taskbar_.bounds.left)
+                                         : (taskbar_.bounds.bottom - taskbar_.bounds.top);
+        const int extent = horizontal ? widgetWidth : availableThickness_;
+        const int fromEnd = MulDiv(placement.offsetFromRight, dpi_, 96);
+
+        // Clamped so a saved position from a wider screen cannot put the widget
+        // off the end of a narrower one.
+        return std::clamp(barLength - fromEnd - extent, 0, std::max(0, barLength - extent));
+    }
 
     if (horizontal) {
         if (!taskbar_.hasNotifyArea) {

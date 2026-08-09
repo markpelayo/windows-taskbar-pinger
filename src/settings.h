@@ -57,9 +57,32 @@ struct MonitorRecord {
     MonitorSettings settings;
 };
 
+// Where the widget sits along the taskbar. App-wide rather than per-monitor:
+// the grids are laid out in one row, so there is one position to remember.
+struct WidgetPlacement {
+    // False means "park beside the notification area and recompute as it
+    // changes width", which is the default. True means the user dragged it
+    // somewhere and we should leave it there.
+    bool manual = false;
+
+    // Distance in logical pixels at 96 DPI from the taskbar's right edge to the
+    // widget's right edge.
+    //
+    // Measured from the right rather than the left on purpose: the left edge is
+    // where the Windows 11 weather widget lives and where the centred app
+    // buttons expand from, so a left-anchored position drifts. Anchoring right
+    // also survives a resolution change, which an absolute position does not.
+    //
+    // The trade-off, and it is a real one: this is the taskbar's edge, not the
+    // notification area's, so a tray that grows an icon will creep toward the
+    // widget until it is moved again.
+    int offsetFromRight = 0;
+};
+
 // The whole persisted document.
 struct SettingsDocument {
     std::vector<MonitorRecord> monitors;
+    WidgetPlacement placement;
     // Kept in insertion order alongside a name, so profile names may contain
     // any character without needing to be escaped into a section header.
     std::vector<std::pair<std::wstring, MonitorSettings>> profiles;
@@ -88,6 +111,9 @@ std::vector<MonitorRecord> LoadMonitors();
 
 // Rewrites the monitor list to match what is on screen.
 void PersistMonitors(const std::vector<MonitorRecord>& monitors);
+
+// Records where the user dragged the widget to.
+void PersistPlacement(const WidgetPlacement& placement);
 
 }  // namespace store
 

@@ -405,6 +405,16 @@ HMENU MonitorController::BuildMenu(std::vector<HMENU>* ownedSubmenus) {
 
     AppendSeparator(menu);
 
+    // Move mode is armed here rather than being always-on, so a stray drag on
+    // the taskbar cannot quietly relocate the widget.
+    const bool moving = app_ && app_->IsMoveMode();
+    AppendItem(menu, MF_STRING | (moving ? MF_CHECKED : MF_UNCHECKED), IDM_MOVE_WIDGET,
+               moving ? L"Move widget — drag it now"
+                      : L"Move widget…");
+    AppendItem(menu, MF_STRING, IDM_RESET_POSITION, L"Reset widget position");
+
+    AppendSeparator(menu);
+
     AppendItem(menu, MF_STRING, IDM_PING_NOW, L"Ping now");
     AppendItem(menu, MF_STRING, IDM_CLEAR_HISTORY, L"Clear monitor history");
 
@@ -685,6 +695,14 @@ void MonitorController::HandleCommand(int command) {
             }
             break;
         }
+
+        case IDM_MOVE_WIDGET:
+            if (app_) app_->BeginMoveMode();
+            break;
+
+        case IDM_RESET_POSITION:
+            if (app_) app_->ResetWidgetPosition();
+            break;
 
         case IDM_PING_NOW:
             Restart();

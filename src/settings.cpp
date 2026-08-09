@@ -316,6 +316,10 @@ SettingsDocument& Document() {
             record.id = section.name.substr(8);
             record.settings = ReadSettings(section);
             if (!record.id.empty()) g_document.monitors.push_back(std::move(record));
+        } else if (section.name == L"widget") {
+            g_document.placement.manual = ReadBool(section, L"manualPosition", false);
+            g_document.placement.offsetFromRight =
+                ReadInt(section, L"offsetFromRight", 0);
         } else if (section.name.rfind(L"profile:", 0) == 0) {
             const std::wstring name = ReadString(section, L"name", L"");
             if (!name.empty()) {
@@ -339,6 +343,10 @@ void Save() {
     std::wostringstream out;
     out << L"; " << defaults::kProjectName << L" settings\n";
     out << L"; Edited by hand at your own risk; unknown keys are ignored.\n\n";
+
+    out << L"[widget]\n";
+    out << L"manualPosition=" << (g_document.placement.manual ? L"1" : L"0") << L"\n";
+    out << L"offsetFromRight=" << g_document.placement.offsetFromRight << L"\n\n";
 
     for (const MonitorRecord& record : g_document.monitors) {
         out << L"[monitor:" << record.id << L"]\n";
@@ -390,6 +398,11 @@ std::vector<MonitorRecord> LoadMonitors() {
 
 void PersistMonitors(const std::vector<MonitorRecord>& monitors) {
     Document().monitors = monitors;
+    Save();
+}
+
+void PersistPlacement(const WidgetPlacement& placement) {
+    Document().placement = placement;
     Save();
 }
 

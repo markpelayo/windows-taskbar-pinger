@@ -153,6 +153,8 @@ Right-click any grid:
 | **Columns ▸** | 4–32 (default 8) |
 | **Cell size ▸** | 2–12 px (default 6) |
 | **Cell spacing ▸** | 0–3 px (default 1) |
+| **Move widget…** | Arms dragging: the cursor changes, then drag the widget along the taskbar and release |
+| **Reset widget position** | Back to the automatic spot beside the clock |
 | **Ping now** | Force an immediate sample |
 | **Clear monitor history** | Empty the grid |
 | **Save monitor profile ▸** | **New profile…**, or pick a listed profile to overwrite it |
@@ -198,6 +200,11 @@ Consequences you should know about:
   between them are centred on Windows 11 and move as windows open and close. The notification area
   is the only part of the taskbar that stays put.
 
+  **Move widget…** in the menu overrides this if you want it somewhere else. Once you have moved
+  it, the position is stored as a distance from the taskbar's right edge and stays exactly there —
+  which means a tray that grows an icon will creep toward it. **Reset widget position** puts it
+  back under automatic placement.
+
 ## Resource usage
 
 It was written to be something you can leave running forever:
@@ -225,8 +232,9 @@ Expect a few MB of RSS and effectively no CPU between packets.
   unreachable rather than silently doing nothing.
 - **One tooltip.** The notification-area icon shows the first monitor's stats. Per-grid hover
   tooltips would need a tracking control per grid.
-- **The widget is not draggable.** Its position is computed from the notification area rather than
-  chosen, so there is nothing to move it with.
+- **A dragged position is anchored to the taskbar's right edge**, not to the notification area. It
+  survives a resolution change, but tray icons appearing will encroach on it. Automatic placement
+  (the default) does not have this problem.
 
 ## Troubleshooting
 
