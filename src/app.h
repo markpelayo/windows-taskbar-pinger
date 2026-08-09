@@ -53,6 +53,18 @@ public:
 
     void RequestQuit();
 
+    // Arms dragging. The next left-press on the widget starts a move, and the
+    // release ends it and saves the new position.
+    //
+    // Deliberately menu-armed rather than always-on: the widget sits in the
+    // taskbar, where a stray drag would be easy and the consequence — a status
+    // indicator that has quietly wandered off — is annoying to undo.
+    void BeginMoveMode();
+    bool IsMoveMode() const { return moveMode_; }
+
+    // Back to the computed position beside the notification area.
+    void ResetWidgetPosition();
+
 private:
     static LRESULT CALLBACK WindowProc(HWND window, UINT message, WPARAM wParam,
                                        LPARAM lParam);
@@ -63,6 +75,14 @@ private:
     void OnRightClick(POINT screenPoint);
     void OnTaskbarCreated();
     void OnDpiChanged();
+
+    // Returns true when the message was consumed by an in-progress drag.
+    bool OnDragButtonDown();
+    bool OnDragMouseMove();
+    bool OnDragButtonUp();
+
+    // Is the taskbar horizontal? Dragging follows its long axis either way.
+    bool TaskbarIsHorizontal() const;
 
     // Performs the removal requested by RemoveMonitor, once the menu handler
     // that asked for it has returned. Acts on pendingRemovalId_; the parameter
@@ -99,6 +119,17 @@ private:
 
     ScopedFont  font_;
     int         fontDpi_ = 0;
+
+    // Dragging. `moveMode_` is armed from the menu and cleared when the drag
+    // finishes; `dragging_` is true only between the press and the release.
+    bool  moveMode_ = false;
+    bool  dragging_ = false;
+    POINT dragStart_{};
+    int   dragStartOffset_ = 0;
+
+    // The widget's overall width, kept from the last layout so a drag can clamp
+    // against the taskbar without recomputing everything on every mouse move.
+    int lastTotalWidth_ = 0;
 
     UINT taskbarCreatedMessage_ = 0;
     bool trayIconAdded_ = false;

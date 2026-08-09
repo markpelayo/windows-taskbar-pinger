@@ -24,6 +24,8 @@
 #define IDM_INTERVAL_CUSTOM    40011
 #define IDM_SUCCESS_CUSTOM     40012
 #define IDM_FAILURE_CUSTOM     40013
+#define IDM_MOVE_WIDGET        40014
+#define IDM_RESET_POSITION     40015
 
 #define IDM_INTERVAL_FIRST     41000   // + index into IntervalChoices
 #define IDM_INTERVAL_LAST      41099

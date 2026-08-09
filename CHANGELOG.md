@@ -7,7 +7,21 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-Nothing yet.
+### Added
+
+- **The widget can be moved along the taskbar.** **Move widget…** in the menu arms dragging — the
+  cursor changes to a resize arrow — then you drag it and release. **Reset widget position** returns
+  it to automatic placement beside the clock.
+
+  Dragging is menu-armed rather than always available on purpose: the widget lives in the taskbar,
+  where an accidental drag would be easy and a status indicator that has quietly wandered off is
+  irritating to find again.
+
+  A moved position is stored as a distance from the taskbar's right edge, in DPI-independent units,
+  so it survives a resolution change and clamps rather than disappearing if the new screen is
+  narrower. The trade-off is that it is anchored to the taskbar edge and not to the notification
+  area, so tray icons appearing will gradually encroach on it — automatic placement, which tracks
+  the notification area, does not have that problem.
 
 ## [1.0.1] — 2026-08-09
 
