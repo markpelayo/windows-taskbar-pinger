@@ -36,6 +36,19 @@ struct MonitorSettings {
     // setting, so two grids side by side can be weighted differently.
     int          textSize   = defaults::kTextSize;
 
+    // Which way the grid fills.
+    //
+    // False, the default, is the original behaviour inherited from the macOS
+    // version: cells advance up a column from the bottom-left, then move to the
+    // next column — newest at the top right.
+    //
+    // True fills in rows instead: left to right along the top row, then down to
+    // the next — newest at the bottom right, the way text is read.
+    //
+    // Only the order in which cells are painted changes. The number of cells,
+    // the rolling window and therefore the average latency are all untouched.
+    bool         fillHorizontal = defaults::kFillHorizontal;
+
     int CellCount() const { return rows * columns; }
 
     COLORREF ColorFor(ColorSlot slot) const {

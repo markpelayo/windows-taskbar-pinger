@@ -9,6 +9,22 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 Nothing yet.
 
+## [1.0.5] — 2026-08-09
+
+### Added
+
+- **Fill direction is switchable,** from a new toggle beneath **Failure color**.
+
+  Off, the default, keeps the order inherited from the macOS version: cells climb a column from the
+  bottom-left, then move to the next column, with the newest sample at the top right.
+
+  On, cells run left to right along the top row and then down — the way text is read — with the
+  newest sample at the bottom right.
+
+  Only the mapping from sample to cell position changes. The same samples occupy the same number of
+  cells, the rolling window behaves identically, and the average latency is computed from the same
+  set either way, so switching direction re-flows the existing history rather than disturbing it.
+
 ## [1.0.4] — 2026-08-09
 
 ### Fixed
@@ -183,7 +199,9 @@ These are deliberate differences, not omissions:
 - **Keyboard shortcuts.** The macOS menu had ⌘L, ⌘D, ⌘S and friends. Context menus opened by
   right-click have no equivalent accelerator context.
 
-[Unreleased]: https://github.com/markpelayo/windows-taskbar-pinger/compare/v1.0.4...HEAD
+[Unreleased]: https://github.com/markpelayo/windows-taskbar-pinger/compare/v1.0.5...HEAD
+[1.0.5]: https://github.com/markpelayo/windows-taskbar-pinger/releases/tag/v1.0.5
+[1.0.5]: https://github.com/markpelayo/windows-taskbar-pinger/releases/tag/v1.0.5
 [1.0.4]: https://github.com/markpelayo/windows-taskbar-pinger/releases/tag/v1.0.4
 [1.0.3]: https://github.com/markpelayo/windows-taskbar-pinger/releases/tag/v1.0.3
 [1.0.2]: https://github.com/markpelayo/windows-taskbar-pinger/releases/tag/v1.0.2
