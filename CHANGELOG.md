@@ -9,6 +9,21 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 Nothing yet.
 
+## [1.4.1] — 2026-08-09
+
+### Changed
+
+- **The menu now says that Restore monitor defaults affects one grid only.** A greyed note —
+  *(applies to this monitor only, not its copies)* — sits directly beneath it.
+
+  Everything above that point in the menu acts on the grid you right-clicked, which is self-evident
+  with one grid on screen and much less so once there are copies of it. **Restore monitor defaults**
+  is the item that reads most like it might be global, and also the one whose consequences you would
+  least want to be surprised by.
+
+  The note appears only when more than one monitor exists. With a single grid the distinction does
+  not exist, and the line would be noise in a menu that is already long.
+
 ## [1.4.0] — 2026-08-09
 
 ### Added
@@ -442,7 +457,8 @@ These are deliberate differences, not omissions:
 - **Keyboard shortcuts.** The macOS menu had ⌘L, ⌘D, ⌘S and friends. Context menus opened by
   right-click have no equivalent accelerator context.
 
-[Unreleased]: https://github.com/markpelayo/windows-taskbar-pinger/compare/v1.4.0...HEAD
+[Unreleased]: https://github.com/markpelayo/windows-taskbar-pinger/compare/v1.4.1...HEAD
+[1.4.1]: https://github.com/markpelayo/windows-taskbar-pinger/releases/tag/v1.4.1
 [1.4.0]: https://github.com/markpelayo/windows-taskbar-pinger/releases/tag/v1.4.0
 [1.3.0]: https://github.com/markpelayo/windows-taskbar-pinger/releases/tag/v1.3.0
 [1.2.2]: https://github.com/markpelayo/windows-taskbar-pinger/releases/tag/v1.2.2
@@ -451,6 +467,7 @@ These are deliberate differences, not omissions:
 [1.1.1]: https://github.com/markpelayo/windows-taskbar-pinger/releases/tag/v1.1.1
 [1.1.0]: https://github.com/markpelayo/windows-taskbar-pinger/releases/tag/v1.1.0
 [1.0.5]: https://github.com/markpelayo/windows-taskbar-pinger/releases/tag/v1.0.5
+[1.4.1]: https://github.com/markpelayo/windows-taskbar-pinger/releases/tag/v1.4.1
 [1.4.0]: https://github.com/markpelayo/windows-taskbar-pinger/releases/tag/v1.4.0
 [1.3.0]: https://github.com/markpelayo/windows-taskbar-pinger/releases/tag/v1.3.0
 [1.2.2]: https://github.com/markpelayo/windows-taskbar-pinger/releases/tag/v1.2.2

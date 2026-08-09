@@ -89,7 +89,7 @@ precisely so that cloning and building needs nothing but a compiler.
 
 ## Status
 
-**v1.4.0. Working well on Windows 11** — daily use, left running, no known outstanding issues.
+**v1.4.1. Working well on Windows 11** — daily use, left running, no known outstanding issues.
 
 Everything in the menu reference below does what it says: the grid, the latency readout, multiple
 monitors, profiles, the taskbar embedding, surviving an Explorer restart, and starting with Windows.
@@ -210,7 +210,7 @@ Right-click any grid:
 | **Clear monitor history** | Empty the grid |
 | **Save monitor profile ▸** | **New profile…**, or pick a listed profile to overwrite it |
 | **Load monitor profile ▸** | Apply a saved profile. Each row carries an ✕ on the right — click that instead to delete it. Greyed out when nothing is saved |
-| **Restore monitor defaults** | Reset this grid to the factory settings |
+| **Restore monitor defaults** | Reset this grid to the factory settings. Affects only the grid you right-clicked — a note saying so appears in the menu once you have more than one |
 | **Duplicate this monitor** | Add another grid with a copy of these settings |
 | **Remove this monitor** | Delete just this grid (disabled when one is left) |
 | **Run at startup ▸** | **Off**, **Default**, or a delay of 5–60 seconds. Adds or removes an `HKEY_CURRENT_USER` Run entry — no admin rights, and visible in Task Manager's Startup tab. The parent row shows the current setting |

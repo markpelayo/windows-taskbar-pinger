@@ -456,6 +456,10 @@ HMENU MonitorController::BuildMenu(std::vector<HMENU>* ownedSubmenus) {
     }
     AppendSeparator(menu);
 
+    // Queried once: it decides both the clarifying line further down and
+    // whether Duplicate and Remove are available.
+    const int monitorCount = app_ ? app_->MonitorCount() : 1;
+
     AppendItem(menu, MF_STRING, IDM_SET_HOST, L"Set IP Address or Hostname…");
 
     // Ping frequency
@@ -655,13 +659,25 @@ HMENU MonitorController::BuildMenu(std::vector<HMENU>* ownedSubmenus) {
 
     AppendItem(menu, MF_STRING, IDM_RESTORE_DEFAULTS, L"Restore monitor defaults");
 
+    // Every item above acts on this grid alone, which is obvious with one grid
+    // on screen and much less so once there are copies of it. "Restore monitor
+    // defaults" is the one that reads like it might be global, and it is also
+    // the one whose consequences you would least like to be surprised by.
+    //
+    // Shown only when there is more than one monitor: with a single grid the
+    // distinction does not exist and the line would be noise.
+    if (monitorCount > 1) {
+        AppendItem(menu, MF_STRING | MF_GRAYED, 0,
+                   L"     (applies to this monitor only, not its copies)");
+    }
+
     AppendSeparator(menu);
 
-    const bool canAdd = app_ && app_->MonitorCount() < defaults::kMaxMonitors;
+    const bool canAdd = app_ && monitorCount < defaults::kMaxMonitors;
     AppendItem(menu, MF_STRING | (canAdd ? MF_ENABLED : MF_GRAYED), IDM_DUPLICATE,
                L"Duplicate this monitor");
 
-    const bool canRemove = app_ && app_->MonitorCount() > 1;
+    const bool canRemove = app_ && monitorCount > 1;
     AppendItem(menu, MF_STRING | (canRemove ? MF_ENABLED : MF_GRAYED), IDM_REMOVE,
                L"Remove this monitor");
 
