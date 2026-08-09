@@ -7,12 +7,24 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- **The widget now anchors to the notification area** instead of the taskbar's left edge. At the
+  far left it overlapped the Windows 11 weather and news widget; the app buttons between them are
+  centred and move as windows open and close, so the notification area is the only stable anchor.
+  Its position is re-checked as the tray changes width.
+- **Latency text follows the shell's theme.** It was drawn with `GetSysColor(COLOR_BTNTEXT)`, which
+  reports the *apps* theme — black under a default Windows 11 install, and unreadable on the dark
+  taskbar. It now reads `SystemUsesLightTheme`, which is what the taskbar itself follows.
+- **Latency text is 12 pt**, up from 9. The taskbar clock's size works because you already know
+  roughly what a clock says; a latency figure has to actually be read.
+- **Default grid is 4 rows**, up from 3.
+- The "about" menu item points at this repository rather than the macOS one.
+
 ### Known issues
 
-- **Never run on real hardware yet.** This release was written as a port and reviewed by reading,
-  not by executing. The first CI build on Windows is what will tell us whether it compiles.
-- The widget is not draggable; it sits at a fixed offset from the taskbar's left edge.
-- On a Windows 11 taskbar with centered icons, the widget can end up visually near the pinned apps.
+- The widget is not draggable; its position is computed rather than chosen.
+- Only lightly tested beyond Windows 11 at 100% scaling with a bottom-docked taskbar.
 
 ## [1.0.0] — unreleased
 

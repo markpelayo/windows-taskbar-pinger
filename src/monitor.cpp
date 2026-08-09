@@ -13,6 +13,7 @@
 #include "app.h"
 #include "dialogs.h"
 #include "resource.h"
+#include "taskbar.h"
 
 namespace pinger {
 
@@ -20,7 +21,9 @@ namespace {
 
 // Width reserved for the latency readout, in logical pixels at 96 DPI.
 // Fixed rather than measured so a changing number never reflows the taskbar.
-constexpr int kLatencyTextWidth = 46;
+// Sized for the widest realistic string ("<1 ms" up to "9999 ms") at the
+// 12 pt face the app draws with.
+constexpr int kLatencyTextWidth = 62;
 constexpr int kLatencyTextGap = 6;
 
 void AppendItem(HMENU menu, UINT flags, UINT_PTR id, const wchar_t* text) {
@@ -100,10 +103,10 @@ void MonitorController::Paint(HDC dc, const RECT& slot, HFONT font) {
     const std::wstring latency =
         record_.settings.showLatency ? AverageLatencyText() : std::wstring();
 
-    // The taskbar follows the system theme, dark by default on Windows 11.
-    // COLOR_BTNTEXT tracks whichever is in use, so the readout stays legible
-    // without the app having to detect the theme itself.
-    const COLORREF textColor = GetSysColor(COLOR_BTNTEXT);
+    // Not GetSysColor(COLOR_BTNTEXT): that reports the apps theme, which is
+    // black under a default Windows 11 install, and black on the dark taskbar
+    // is unreadable. TaskbarTextColor reads the shell's own theme setting.
+    const COLORREF textColor = TaskbarTextColor();
 
     renderer_.Paint(dc, slot, record_.settings, metrics_, samples_, latency, textColor,
                     font, dpi_);

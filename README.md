@@ -73,10 +73,9 @@ precisely so that cloning and building needs nothing but a compiler.
 
 ## Status
 
-**This has not yet been run on real hardware.** It is a port, written and reviewed by reading
-rather than by executing, because it was developed on a Mac. The GitHub Actions build is the first
-thing that compiles it. If you are reading this and the build badge above is green, it at least
-compiles; whether it behaves is what the first testers are finding out. Bug reports are genuinely
+Early. It builds and runs on Windows 11, and the core — grid, pinging, menu, taskbar embedding —
+works. It has not been through much beyond that: other Windows versions, other DPI scalings, other
+taskbar positions and multi-monitor setups are all lightly tested at best. Bug reports are genuinely
 useful right now.
 
 ## Build
@@ -143,7 +142,7 @@ Right-click any grid:
 | **Show average latency** | Toggle: prints the average round trip next to the grid |
 | **Success color ▸** | 10 presets plus **Custom…** (system color picker); default blue |
 | **Failure color ▸** | Same, default red |
-| **Rows ▸** | 2–8 (default 3) |
+| **Rows ▸** | 2–8 (default 4) |
 | **Columns ▸** | 4–32 (default 8) |
 | **Cell size ▸** | 2–12 px (default 6) |
 | **Cell spacing ▸** | 0–3 px (default 1) |
@@ -186,8 +185,11 @@ Consequences you should know about:
 - **The taskbar doesn't announce moves.** There's no notification when it changes edge or size, so
   the app re-checks every two seconds. That's one `FindWindow` and one `GetWindowRect` — far below
   anything measurable.
-- **Position is approximate.** The widget sits a fixed offset from the left of the taskbar. With
-  centered taskbar icons on Windows 11 it may end up near your pinned apps.
+- **The widget anchors to the notification area.** It parks immediately left of the clock and tray
+  icons, and re-checks that position as the notification area changes width. It deliberately does
+  *not* sit at the far left: that is where the weather and news widget lives, and the app buttons
+  between them are centred on Windows 11 and move as windows open and close. The notification area
+  is the only part of the taskbar that stays put.
 
 ## Resource usage
 
@@ -216,7 +218,8 @@ Expect a few MB of RSS and effectively no CPU between packets.
   unreachable rather than silently doing nothing.
 - **One tooltip.** The notification-area icon shows the first monitor's stats. Per-grid hover
   tooltips would need a tracking control per grid.
-- **The widget is not draggable yet.** It sits at a fixed offset from the taskbar's left edge.
+- **The widget is not draggable.** Its position is computed from the notification area rather than
+  chosen, so there is nothing to move it with.
 
 ## Troubleshooting
 
